@@ -47,10 +47,16 @@ export async function POST(req: Request) {
 
     const buffer = await Packer.toBuffer(doc);
 
-    // ✅ Blob is valid BodyInit in Next's Response typing
     const mime =
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    const blob = new Blob([buffer], { type: mime });
+
+    // ✅ Buffer -> true ArrayBuffer slice
+    const ab = buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength
+    ) as ArrayBuffer;
+
+    const blob = new Blob([ab], { type: mime });
 
     return new Response(blob, {
       status: 200,
@@ -64,7 +70,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Preserve legacy behavior
 export async function GET() {
   return Response.json({ error: "Use POST" }, { status: 405 });
 }
