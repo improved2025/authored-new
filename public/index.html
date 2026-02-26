@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Authored — Start writing without losing your voice</title>
+  <meta name="description" content="Authored helps stuck writers start and finish a real manuscript in their own voice. It doesn’t write for you. It writes with you." />
+
+  <!-- Better than data:, and works with /public -->
+  <link rel="icon" href="/favicon.ico" />
+
+  <style>
+    :root{
+      --bg:#07080c;
+      --text:#f5f7fb;
+      --muted:rgba(245,247,251,.78);
+      --line:rgba(255,255,255,.10);
+      --accent:#ff8a2a;
+      --shadow: 0 20px 60px rgba(0,0,0,.45);
+      --r:18px;
+      --max:1120px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color:var(--text);
+      background: var(--bg);
+      line-height:1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a{color:inherit}
+    img, video{max-width:100%; display:block;}
+    .wrap{max-width:var(--max); margin:0 auto; padding:0 20px;}
+
+    a:focus-visible, button:focus-visible{
+      outline: 3px solid rgba(255,138,42,.55);
+      outline-offset: 3px;
+      border-radius: 999px;
+    }
+
+    /* Top bar */
+    .top{
+      position:sticky; top:0; z-index:50;
+      backdrop-filter: blur(14px);
+      background: rgba(11,13,18,.62);
+      border-bottom:1px solid var(--line);
+    }
+    .topInner{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      padding:14px 0;
+    }
+
+    .logo-wrap{
+      display:flex;
+      align-items:center;
+      text-decoration:none;
+      flex:0 0 auto;
+    }
+    .logo-wrap img{ height:48px; width:auto; }
+
+    .nav{
+      display:flex; align-items:center; justify-content:flex-end;
+      gap:10px; flex-wrap:wrap;
+    }
+
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:12px 14px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      text-decoration:none;
+      font-weight:800;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease, filter .12s ease;
+      white-space:nowrap;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:hover{
+      transform: translateY(-1px);
+      background: rgba(255,255,255,.05);
+      border-color: rgba(255,255,255,.18);
+    }
+
+    .btnGhost{
+      background: rgba(255,255,255,.03);
+      color: rgba(245,247,251,.86);
+      border-color: rgba(255,255,255,.14);
+    }
+    .btnGhost:hover{ background: rgba(255,255,255,.06); color: rgba(245,247,251,.95); }
+
+    .btnPrimary{
+      border-color: transparent;
+      background: linear-gradient(135deg, #ff8a2a, #ffc266);
+      color:#0b0d12;
+      box-shadow: 0 18px 48px rgba(255,138,42,.32);
+      animation: pulseCTA 2.8s ease-in-out infinite;
+    }
+    .btnPrimary:hover{
+      background: linear-gradient(135deg, #ff7a12, #ffd08a);
+      transform: translateY(-2px);
+      filter: brightness(1.02);
+    }
+    .btnPrimary:active{transform: translateY(0px) scale(.99);}
+
+    @keyframes pulseCTA {
+      0%   { box-shadow: 0 18px 48px rgba(255,138,42,.22); }
+      60%  { box-shadow: 0 18px 48px rgba(255,138,42,.42); }
+      100% { box-shadow: 0 18px 48px rgba(255,138,42,.22); }
+    }
+
+    /* HERO */
+    .hero{
+      position:relative;
+      overflow:hidden;
+      padding:56px 0 44px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+
+    .heroBg{
+      position:absolute;
+      inset:0;
+      z-index:0;
+      pointer-events:none;
+      background:#07080c;
+    }
+    .heroBg .slide{
+      position:absolute; inset:0;
+      background-position:center;
+      background-size:cover;
+      background-repeat:no-repeat;
+      opacity:0;
+      animation: heroFadeOther 18s infinite;
+      will-change: opacity, transform;
+      transform: scale(1.06);
+      filter: brightness(1.18) contrast(1.10) saturate(1.06);
+    }
+    .heroBg .s1{
+      background-image: url("/assets/slide-1.webp");
+      animation-name: heroFadeFirst;
+      opacity:1;
+    }
+    .heroBg .s2{ background-image: url("/assets/slide-2.webp"); animation-delay: 6s; }
+    .heroBg .s3{ background-image: url("/assets/slide-3.webp"); animation-delay: 12s; }
+
+    @keyframes heroFadeFirst{
+      0%{opacity:1; transform: scale(1.06);}
+      30%{opacity:1; transform: scale(1.03);}
+      40%{opacity:0; transform: scale(1.02);}
+      100%{opacity:0; transform: scale(1.06);}
+    }
+    @keyframes heroFadeOther{
+      0%{opacity:0; transform: scale(1.06);}
+      8%{opacity:1; transform: scale(1.05);}
+      35%{opacity:1; transform: scale(1.03);}
+      45%{opacity:0; transform: scale(1.02);}
+      100%{opacity:0; transform: scale(1.06);}
+    }
+
+    .heroOverlay{
+      position:absolute; inset:0; z-index:1; pointer-events:none;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.66) 40%, rgba(0,0,0,.28) 76%, rgba(0,0,0,.10) 100%),
+        linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,.28) 55%, rgba(0,0,0,.46) 100%);
+    }
+    .heroGlow{
+      position:absolute; inset:-160px; z-index:1; pointer-events:none;
+      background:
+        radial-gradient(740px 460px at 18% 30%, rgba(255,138,42,.18), transparent 62%),
+        radial-gradient(760px 520px at 85% 22%, rgba(34,197,94,.10), transparent 64%);
+      filter: blur(14px);
+      opacity:.55;
+      animation: glowMove 14s ease-in-out infinite alternate;
+      transform: translate3d(0,0,0);
+    }
+    @keyframes glowMove{
+      0% { transform: translate3d(-12px,-8px,0) scale(1); }
+      100% { transform: translate3d(14px,10px,0) scale(1.03); }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .heroBg .slide{ animation:none; opacity:.30; }
+      .btnPrimary{ animation:none; }
+      .heroGlow{ animation:none; }
+      .btn{ transition:none; }
+    }
+
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap:22px;
+      align-items:center;
+      position:relative;
+      z-index:2;
+    }
+
+    .heroGrid > div{ position:relative; z-index: 6; }
+    .ctaRow, .ctaRow .btn, .badge, .ticker{ position:relative; z-index: 7; }
+
+    .badge{
+      display:inline-flex; align-items:center; gap:10px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.30);
+      color:rgba(245,247,251,.90);
+      font-size:13px;
+      width:fit-content;
+      backdrop-filter: blur(10px);
+    }
+    .badge strong{color:var(--text)}
+
+    .ticker{
+      margin:0 0 12px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.22);
+      border-radius:999px;
+      overflow:hidden;
+      width:fit-content;
+      max-width:100%;
+      backdrop-filter: blur(10px);
+    }
+    .tickerTrack{
+      display:flex; gap:16px; white-space:nowrap;
+      padding:10px 12px;
+      animation: tickerScroll 26s linear infinite;
+      will-change: transform;
+      color: rgba(245,247,251,.84);
+      font-size:13px;
+      letter-spacing:.02em;
+    }
+    .tickerStrong{font-weight:900; color:rgba(245,247,251,.94);}
+    .tickerDot{opacity:.55;}
+    .ticker:hover .tickerTrack{animation-play-state:paused;}
+    @keyframes tickerScroll{ 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+    h1{
+      margin:16px 0 12px;
+      font-size: clamp(34px, 4vw, 56px);
+      letter-spacing:-.03em;
+      line-height:1.05;
+      text-shadow: 0 20px 70px rgba(0,0,0,.70);
+    }
+    .lead{
+      margin:0 0 16px;
+      color:rgba(245,247,251,.86);
+      font-size: clamp(15px, 1.35vw, 18px);
+      max-width:60ch;
+      text-shadow: 0 14px 50px rgba(0,0,0,.60);
+    }
+
+    .quickClarity{
+      margin: 14px 0 18px;
+      display:flex; flex-wrap:wrap; gap:10px;
+      max-width: 62ch;
+    }
+    .qc{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.22);
+      color: rgba(245,247,251,.90);
+      font-size:13px;
+      backdrop-filter: blur(10px);
+    }
+    .qcDot{
+      width:8px; height:8px; border-radius:999px;
+      background: rgba(255,138,42,.85);
+      box-shadow: 0 0 0 4px rgba(255,138,42,.14);
+      flex:0 0 auto;
+    }
+
+    .ctaRow{display:flex; gap:12px; flex-wrap:wrap; align-items:center;}
+    .micro{
+      margin:10px 0 0;
+      color: rgba(245,247,251,.76);
+      font-size:13px;
+      text-shadow: 0 12px 40px rgba(0,0,0,.60);
+    }
+
+    .priceHint{
+      margin-top: 10px;
+      font-size: 13px;
+      color: rgba(245,247,251,.78);
+      max-width: 62ch;
+      text-shadow: 0 12px 40px rgba(0,0,0,.60);
+    }
+    .priceHint b{ color: rgba(245,247,251,.92); }
+
+    .panel{
+      border:1px solid rgba(255,255,255,.12);
+      background: linear-gradient(180deg, rgba(0,0,0,.34), rgba(0,0,0,.22));
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      backdrop-filter: blur(12px);
+      position:relative;
+      z-index:10;
+    }
+    .panelTop{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px;
+      background: rgba(0,0,0,.34);
+      border-bottom:1px solid rgba(255,255,255,.10);
+      position:relative;
+      z-index:11;
+    }
+    .dots{display:flex; gap:7px; align-items:center;}
+    .dots span{width:10px; height:10px; border-radius:999px; background: rgba(255,255,255,.18);}
+    .panelBody{padding:18px; position:relative; z-index:11;}
+    .previewTitle{font-weight:900; margin:0 0 10px; letter-spacing:-.02em;}
+    .line{height:10px; border-radius:999px; background: rgba(255,255,255,.12); margin:10px 0;}
+    .w1{width:92%} .w2{width:78%} .w3{width:85%}
+
+    .miniGrid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;}
+    .mini{
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      padding:12px;
+      background: rgba(255,255,255,.03);
+      transition: transform .16s ease, background .16s ease, border-color .16s ease;
+    }
+    .mini:hover{
+      transform: translateY(-2px);
+      background: rgba(255,255,255,.05);
+      border-color: rgba(255,255,255,.20);
+    }
+    .mini b{display:block; margin-bottom:6px;}
+    .mini span{color:rgba(245,247,251,.78); font-size:13px;}
+
+    .section{padding:44px 0;}
+    .title{
+      font-size: clamp(22px, 2.3vw, 32px);
+      letter-spacing:-.02em;
+      margin:0 0 10px;
+    }
+    .sub{margin:0 0 18px; color:rgba(245,247,251,.78); max-width:78ch;}
+
+    .valueBand{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 22px;
+      background: rgba(255,255,255,.035);
+      box-shadow: var(--shadow);
+      padding:22px 18px;
+      overflow:hidden;
+      position:relative;
+    }
+    .valueGlow{
+      position:absolute;
+      inset:-120px;
+      pointer-events:none;
+      background:
+        radial-gradient(720px 420px at 12% 35%, rgba(255,138,42,.10), transparent 60%),
+        radial-gradient(640px 380px at 92% 20%, rgba(34,197,94,.08), transparent 62%);
+      filter: blur(18px);
+      opacity:.7;
+    }
+    .valueGrid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:14px;
+      margin-top:14px;
+      position:relative;
+      z-index:1;
+    }
+    .valueCard{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: var(--r);
+      background: rgba(0,0,0,.18);
+      padding:16px;
+      min-height: 142px;
+    }
+    .valueCard h3{ margin:0 0 8px; font-size:16px; letter-spacing:-.01em; }
+    .valueCard p{ margin:0; color: rgba(245,247,251,.78); font-size:14px; line-height:1.55; }
+
+    /* Proof: video only */
+    .media{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: var(--r);
+      background: rgba(0,0,0,.18);
+      padding:14px;
+      overflow:hidden;
+    }
+    .media h3{ margin:0 0 10px; font-size:16px; letter-spacing:-.01em; }
+
+    .videoWrap{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 16px;
+      background: rgba(255,255,255,.03);
+      overflow:hidden;
+      position:relative;
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    }
+    .videoWrap::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(520px 260px at 15% 20%, rgba(255,138,42,.14), transparent 60%),
+        radial-gradient(520px 260px at 90% 10%, rgba(34,197,94,.10), transparent 62%);
+      opacity:.75;
+      mix-blend-mode: screen;
+      z-index: 2;
+    }
+
+    .walkVideo{
+      width:100%;
+      aspect-ratio: 16 / 9;
+      background: #0b0d12;
+      object-fit: cover;
+      position:relative;
+      z-index:1;
+    }
+
+    .playOverlay{
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      z-index:3;
+      pointer-events:auto;
+      background: linear-gradient(180deg, rgba(0,0,0,.15), rgba(0,0,0,.20));
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .playOverlayBtn{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:12px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.38);
+      color: rgba(245,247,251,.92);
+      font-weight:900;
+      letter-spacing:-.01em;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 60px rgba(0,0,0,.45);
+      transform: translateY(0);
+      transition: transform .16s ease, background .16s ease, border-color .16s ease;
+      cursor:pointer;
+      user-select:none;
+    }
+    .playOverlayBtn:hover{
+      transform: translateY(-1px);
+      background: rgba(0,0,0,.46);
+      border-color: rgba(255,255,255,.24);
+    }
+    .playIcon{
+      width:34px; height:34px;
+      border-radius:999px;
+      display:grid;
+      place-items:center;
+      background: linear-gradient(135deg, #ff8a2a, #ffc266);
+      color:#0b0d12;
+      box-shadow: 0 18px 48px rgba(255,138,42,.25);
+      flex:0 0 auto;
+    }
+    .playIcon svg{ width:16px; height:16px; margin-left:2px; }
+    .videoWrap.isPlaying .playOverlay{
+      opacity:0;
+      pointer-events:none;
+      transform: scale(1.01);
+    }
+
+    .videoMeta{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border-top:1px solid rgba(255,255,255,.08);
+      position:relative;
+      z-index:4;
+    }
+    .videoMeta .left{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      min-width: 0;
+    }
+    .videoKicker{
+      font-size:12px;
+      color: rgba(245,247,251,.72);
+      letter-spacing:.01em;
+    }
+    .videoTitle{
+      font-weight:900;
+      letter-spacing:-.01em;
+      font-size:13px;
+      color: rgba(245,247,251,.92);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .videoChip{
+      flex:0 0 auto;
+      font-size:12px;
+      color: rgba(245,247,251,.78);
+      border:1px solid rgba(255,255,255,.14);
+      padding:4px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.03);
+      white-space:nowrap;
+    }
+
+    .reviews{ padding:46px 0; }
+    .reviewsBand{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 22px;
+      background: rgba(255,255,255,.035);
+      box-shadow: var(--shadow);
+      padding:22px 18px;
+    }
+    .reviewsHead{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .reviewsSub{margin:0; color:rgba(245,247,251,.78); max-width:70ch;}
+    .reviewGrid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:14px;
+      margin-top:14px;
+    }
+    .reviewCard{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.02);
+      padding:16px;
+      min-height: 170px;
+    }
+    .stars{font-weight:900; letter-spacing:1px; color: rgba(245,247,251,.94); margin-bottom:10px; font-size:14px;}
+    .quote{margin:0 0 14px; color: rgba(245,247,251,.88); line-height:1.55;}
+    .who{margin:0; font-weight:900; letter-spacing:-.01em;}
+    .role{margin:3px 0 0; color: rgba(245,247,251,.70); font-size:13px;}
+
+    .final{padding:46px 0 60px; text-align:center;}
+    .finalBox{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 22px;
+      background:
+        radial-gradient(900px 400px at 20% 20%, rgba(255,138,42,.10), transparent 60%),
+        radial-gradient(700px 380px at 80% 20%, rgba(34,197,94,.08), transparent 60%),
+        rgba(0,0,0,.35);
+      padding:26px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .footer{
+      padding:18px 0 30px;
+      border-top:1px solid rgba(255,255,255,.10);
+      color: rgba(245,247,251,.62);
+      font-size:13px;
+    }
+    .footerRow{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+    .footer a{color: rgba(245,247,251,.76); text-decoration:none;}
+    .footer a:hover{text-decoration:underline;}
+
+    @media (max-width: 920px){
+      .heroGrid{grid-template-columns:1fr;}
+      .reviewGrid{grid-template-columns:1fr;}
+      .valueGrid{grid-template-columns:1fr;}
+    }
+
+    .hero .wrap, .heroGrid { position: relative; z-index: 5; }
+
+    .panelBody .previewTitle{
+      display:block;
+      color: var(--text);
+      font-weight: 900;
+      font-size: 18px;
+      margin: 0 0 12px;
+      letter-spacing: -.02em;
+      position: relative;
+      z-index: 12;
+      background: rgba(0,0,0,.18);
+      padding: 6px 10px;
+      border-radius: 12px;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    /* ===== MOBILE FIXES ===== */
+    .hBreak{ display:none; }
+    @media (max-width: 640px){
+      .hBreak{ display:block; }
+      .wrap{padding:0 16px;}
+
+      .topInner{
+        flex-direction: column;
+        align-items: center;
+        justify-content:center;
+        gap: 10px;
+        padding: 12px 0 12px;
+      }
+      .logo-wrap{ justify-content:center; }
+      .logo-wrap img{ height:38px; }
+
+      .nav{
+        width:100%;
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap:10px;
+      }
+      .nav .btn{
+        width:100%;
+        padding: 10px 12px;
+        font-size:13px;
+      }
+      .nav .btnGhost{
+        font-weight:800;
+      }
+      .nav .btnPrimary{
+        grid-column: 1 / -1;
+        padding: 12px 14px;
+        font-size: 14px;
+      }
+
+      .hero{
+        padding: 26px 0 18px;
+        border-bottom: 1px solid rgba(255,255,255,.06);
+      }
+
+      .heroOverlay{
+        background:
+          linear-gradient(180deg,
+            rgba(0,0,0,.72) 0%,
+            rgba(0,0,0,.62) 55%,
+            rgba(0,0,0,.78) 100%
+          );
+      }
+
+      .ticker{
+        width:100%;
+        margin:0 0 10px;
+        border-radius: 16px;
+      }
+      .tickerTrack{
+        font-size:11.5px;
+        padding:8px 10px;
+        animation-duration: 36s;
+      }
+
+      .badge{
+        width:100%;
+        justify-content:center;
+        text-align:center;
+      }
+
+      h1{
+        font-size: 34px;
+        line-height:1.06;
+        margin: 14px 0 10px;
+      }
+      .lead{
+        font-size: 15px;
+        margin: 0 0 14px;
+      }
+
+      .quickClarity{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap:10px;
+        max-width:none;
+        margin: 12px 0 16px;
+      }
+      .qc{
+        width:100%;
+        justify-content:flex-start;
+        font-size:12.5px;
+        padding:8px 10px;
+      }
+
+      .ctaRow{
+        flex-direction: column;
+        align-items: stretch;
+        gap:10px;
+        margin-top: 4px;
+      }
+      .ctaRow .btn{
+        width:100%;
+        padding: 12px 14px;
+        font-size: 14px;
+      }
+
+      .priceHint{
+        margin-top: 12px;
+        font-size: 12.5px;
+      }
+      .micro{
+        margin-top: 10px;
+        font-size: 12.5px;
+      }
+
+      .panel{margin-top:14px;}
+      .panelBody{padding:16px;}
+
+      .section{padding:30px 0;}
+      .reviews{padding:34px 0;}
+      .final{padding:34px 0 42px;}
+      .valueBand{ padding:18px 16px; }
+      .videoChip{ display:none; }
+
+      .videoMeta{
+        flex-direction: column;
+        align-items:center;
+        text-align:center;
+        gap:6px;
+        padding: 12px 12px;
+      }
+      .videoTitle{
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        line-height:1.35;
+      }
+      .playOverlayBtn{
+        padding: 11px 13px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="top">
+    <div class="wrap">
+      <div class="topInner">
+        <a href="/" class="logo-wrap">
+          <img src="/assets/logo-authored.png" alt="Authored" />
+        </a>
+
+        <div class="nav">
+          <a class="btn btnGhost" href="https://www.improvedsolution.com/quote" target="_blank" rel="noopener">
+            Publishing assistance
+          </a>
+          <a class="btn" href="/login">Log in</a>
+          <a class="btn btnPrimary" href="/signup">Start writing</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div class="heroBg" aria-hidden="true">
+      <div class="slide s1"></div>
+      <div class="slide s2"></div>
+      <div class="slide s3"></div>
+    </div>
+    <div class="heroOverlay" aria-hidden="true"></div>
+    <div class="heroGlow" aria-hidden="true"></div>
+
+    <div class="wrap">
+      <div class="heroGrid">
+        <div>
+          <div class="ticker" aria-hidden="true">
+            <div class="tickerTrack">
+              <span class="tickerStrong">Memoir</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Devotional</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Non-fiction</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Fiction</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Inspirational</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Start with clarity</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Keep your voice</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Finish the draft</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Outline</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Chapters</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Momentum</span><span class="tickerDot">•</span>
+
+              <span class="tickerStrong">Memoir</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Devotional</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Non-fiction</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Fiction</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Inspirational</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Start with clarity</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Keep your voice</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Finish the draft</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Outline</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Chapters</span><span class="tickerDot">•</span>
+              <span class="tickerStrong">Momentum</span><span class="tickerDot">•</span>
+            </div>
+          </div>
+
+          <div class="badge">
+            <strong>Not an AI ghostwriter.</strong>
+            <span>It writes with you.</span>
+          </div>
+
+          <h1>Write the book you’ve been <br class="hBreak" />avoiding.</h1>
+          <p class="lead">
+            Turn scattered thoughts into a real manuscript in your own voice.
+            Start with clarity, build structure, and keep momentum.
+          </p>
+
+          <div class="quickClarity" aria-label="What Authored helps with">
+            <div class="qc"><span class="qcDot"></span>Clarify the idea</div>
+            <div class="qc"><span class="qcDot"></span>Organize your thoughts</div>
+            <div class="qc"><span class="qcDot"></span>Write in your voice</div>
+            <div class="qc"><span class="qcDot"></span>Expand chapters</div>
+            <div class="qc"><span class="qcDot"></span>Finish the draft</div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="btn btnPrimary" href="/signup">Start writing</a>
+            <a class="btn btnGhost" href="/guest">Try it free</a>
+          </div>
+
+          <div class="priceHint">
+            Outline is <b>free</b>. Expanding chapters is limited on free, then upgrades start at <b>$49</b>.
+          </div>
+
+          <p class="micro">
+            You own your words. Authored guides the process without replacing you.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="panelTop">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div style="color:rgba(245,247,251,.72); font-size:13px;">Draft Builder</div>
+          </div>
+          <div class="panelBody">
+            <p class="previewTitle">Your book, broken into clear steps</p>
+            <div class="line w1"></div>
+            <div class="line w2"></div>
+            <div class="line w3"></div>
+
+            <div class="miniGrid">
+              <div class="mini"><b>Title + Promise</b><span>Lock the message before chapter one.</span></div>
+              <div class="mini"><b>Outline</b><span>Build a chapter map you can finish.</span></div>
+              <div class="mini"><b>Voice</b><span>Write like you, not like AI.</span></div>
+              <div class="mini"><b>Momentum</b><span>Stop restarting. Start completing.</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <section class="section" id="what">
+    <div class="wrap">
+      <div class="valueBand">
+        <div class="valueGlow" aria-hidden="true"></div>
+        <h2 class="title">What Authored helps you do</h2>
+        <p class="sub">
+          Think of it as a calm writing coach. You stay in control. Authored gives structure, prompts, and momentum.
+        </p>
+
+        <div class="valueGrid">
+          <div class="valueCard">
+            <h3>Clarify your message</h3>
+            <p>Turn scattered notes into one clear purpose so you know what the book is actually about.</p>
+          </div>
+          <div class="valueCard">
+            <h3>Build a real outline</h3>
+            <p>Get a chapter map you can finish, not a generic AI dump you can’t use.</p>
+          </div>
+          <div class="valueCard">
+            <h3>Write in your voice</h3>
+            <p>Paste a sample. Authored mirrors your tone and phrasing so it still sounds like you.</p>
+          </div>
+          <div class="valueCard">
+            <h3>Work through chapters</h3>
+            <p>Expand one chapter at a time with gentle prompts and a clear draft shape.</p>
+          </div>
+          <div class="valueCard">
+            <h3>Refine drafts</h3>
+            <p>Improve clarity and flow without losing your personality or turning it into AI writing.</p>
+          </div>
+          <div class="valueCard">
+            <h3>Stay consistent</h3>
+            <p>Stop restarting. Keep progressing with a repeatable process you can trust.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="proof">
+    <div class="wrap">
+      <h2 class="title">See it in action</h2>
+      <p class="sub">A quick walkthrough of the real flow: start → outline → expand.</p>
+
+      <div class="media">
+        <h3>60-second walkthrough</h3>
+
+        <div class="videoWrap" id="walkWrap">
+          <video
+            class="walkVideo"
+            id="walkVideo"
+            controls
+            playsinline
+            preload="metadata"
+            poster="/assets/video-poster.webp"
+          >
+            <source src="/assets/authored-walkthrough.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+
+          <div class="playOverlay" id="playOverlay" role="button" aria-label="Play the walkthrough">
+            <div class="playOverlayBtn">
+              <span class="playIcon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"></path>
+                </svg>
+              </span>
+              Watch the walkthrough
+            </div>
+          </div>
+
+          <div class="videoMeta">
+            <div class="left">
+              <div class="videoKicker">Start → Outline → Expand</div>
+              <div class="videoTitle">See how Authored turns an idea into a chapter draft</div>
+            </div>
+            <div class="videoChip">~55s</div>
+          </div>
+        </div>
+
+        <p class="sub" style="margin:12px 0 0; max-width:none;">
+          Tip: watch with sound. The narration explains what’s happening as you move through each step.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="reviews" id="reviews">
+    <div class="wrap">
+      <div class="reviewsBand">
+        <div class="reviewsHead">
+          <h2 class="title" style="margin:0;">What writers are saying</h2>
+          <p class="reviewsSub">Real feedback from early users who care about voice, clarity, and finishing.</p>
+        </div>
+
+        <div class="reviewGrid">
+          <div class="reviewCard">
+            <div class="stars">★★★★★</div>
+            <p class="quote">Authored is a true game changer. It makes writing faster, clearer, and easier without sacrificing your voice, and I recommend it without hesitation to anyone serious about producing books that meet real demand.</p>
+            <p class="who">Francis T</p>
+            <p class="role">Pastor</p>
+          </div>
+
+          <div class="reviewCard">
+            <div class="stars">★★★★★</div>
+            <p class="quote">It’s like having that one friend who looks at your draft and says, “Say it like this,” and suddenly it’s right. Authored doesn’t replace you, it sharpens you.</p>
+            <p class="who">Fuletha D</p>
+            <p class="role">Educator</p>
+          </div>
+
+          <div class="reviewCard">
+            <div class="stars">★★★★★</div>
+            <p class="quote">This is an excellent tool, especially when writer’s block hits. I had an idea about dealing with betrayal but didn’t know how to expand it, and Authored completely changed the game for me.</p>
+            <p class="who">Sylvia T</p>
+            <p class="role">Pastor</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <div class="finalBox">
+        <h2 class="title" style="margin:0 0 8px;">Stop carrying the book. Start writing it.</h2>
+        <p class="sub" style="margin:0 auto 16px;">Start free. Keep going when you’re ready.</p>
+
+        <div class="ctaRow" style="justify-content:center;">
+          <a class="btn btnPrimary" href="/signup">Start writing</a>
+          <a class="btn btnGhost" href="/guest">Try it free</a>
+        </div>
+
+        <p class="micro" style="margin-top:12px;">
+          You own your words. Authored helps you finish them.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footerRow">
+        <div>© <span id="y"></span> Authored</div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap;">
+          <a href="mailto:support@myauthored.com">Support</a>
+          <a href="https://www.improvedsolution.com/quote" target="_blank" rel="noopener">Publishing assistance</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    (function(){
+      const wrap = document.getElementById("walkWrap");
+      const vid = document.getElementById("walkVideo");
+      const overlay = document.getElementById("playOverlay");
+      if(!wrap || !vid || !overlay) return;
+
+      const setPlaying = (isPlaying) => {
+        wrap.classList.toggle("isPlaying", !!isPlaying);
+      };
+
+      overlay.addEventListener("click", () => {
+        try { vid.play(); } catch(e) {}
+      });
+
+      vid.addEventListener("play", () => setPlaying(true));
+      vid.addEventListener("pause", () => setPlaying(false));
+      vid.addEventListener("ended", () => setPlaying(false));
+    })();
+  </script>
+</body>
+</html>
