@@ -38,11 +38,7 @@ export async function POST(req: Request) {
         paragraphs.push(new Paragraph({ text: "" }));
         continue;
       }
-      paragraphs.push(
-        new Paragraph({
-          children: [new TextRun({ text: line })],
-        })
-      );
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: line })] }));
     }
 
     const doc = new Document({
@@ -51,16 +47,16 @@ export async function POST(req: Request) {
 
     const buffer = await Packer.toBuffer(doc);
 
-    // ✅ Convert Node Buffer -> Uint8Array for Web Response compatibility
-    const bodyBytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    // ✅ Blob is valid BodyInit in Next's Response typing
+    const mime =
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const blob = new Blob([buffer], { type: mime });
 
-    return new Response(bodyBytes, {
+    return new Response(blob, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Type": mime,
         "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "no-store",
       },
     });
   } catch (err: any) {
