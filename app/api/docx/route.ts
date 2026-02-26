@@ -40,24 +40,28 @@ export async function POST(req: Request) {
       }
       paragraphs.push(
         new Paragraph({
-          children: [new TextRun({ text: line })]
+          children: [new TextRun({ text: line })],
         })
       );
     }
 
     const doc = new Document({
-      sections: [{ properties: {}, children: paragraphs }]
+      sections: [{ properties: {}, children: paragraphs }],
     });
 
     const buffer = await Packer.toBuffer(doc);
 
-    return new Response(buffer, {
+    // ✅ Convert Node Buffer -> Uint8Array for Web Response compatibility
+    const bodyBytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
+    return new Response(bodyBytes, {
       status: 200,
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${filename}"`
-      }
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
     });
   } catch (err: any) {
     return Response.json({ error: err?.message || "DOCX error" }, { status: 500 });
