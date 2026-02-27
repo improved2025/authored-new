@@ -1,4 +1,4 @@
-// app/api/docx/route.ts
+import { NextResponse } from "next/server";
 import { Document, Packer, Paragraph, HeadingLevel, TextRun } from "docx";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const content = (body.content || "").toString();
 
     if (!content.trim()) {
-      return Response.json({ error: "Missing content" }, { status: 400 });
+      return NextResponse.json({ error: "Missing content" }, { status: 400 });
     }
 
     const paragraphs: Paragraph[] = [];
@@ -32,8 +32,7 @@ export async function POST(req: Request) {
       paragraphs.push(new Paragraph({ text: "" }));
     }
 
-    const lines = splitLines(content);
-    for (const line of lines) {
+    for (const line of splitLines(content)) {
       if (!line.trim()) {
         paragraphs.push(new Paragraph({ text: "" }));
         continue;
@@ -41,35 +40,26 @@ export async function POST(req: Request) {
       paragraphs.push(new Paragraph({ children: [new TextRun({ text: line })] }));
     }
 
-    const doc = new Document({
-      sections: [{ properties: {}, children: paragraphs }],
-    });
-
+    const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
     const buffer = await Packer.toBuffer(doc);
 
-    const mime =
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    // Make a real ArrayBuffer (avoids SharedArrayBuffer typing issues)
+    const ab = new ArrayBuffer(buffer.byteLength);
+    new Uint8Array(ab).set(buffer);
 
-    // ✅ Buffer -> true ArrayBuffer slice
-    const ab = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength
-    ) as ArrayBuffer;
-
-    const blob = new Blob([ab], { type: mime });
-
-    return new Response(blob, {
+    return new NextResponse(ab, {
       status: 200,
       headers: {
-        "Content-Type": mime,
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (err: any) {
-    return Response.json({ error: err?.message || "DOCX error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message || "DOCX error" }, { status: 500 });
   }
 }
 
 export async function GET() {
-  return Response.json({ error: "Use POST" }, { status: 405 });
+  return NextResponse.json({ error: "Use POST" }, { status: 405 });
 }

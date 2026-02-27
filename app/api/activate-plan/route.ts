@@ -1,6 +1,6 @@
 // app/api/activate-plan/route.ts
 // Sets usage_limits.plan for the authenticated user.
-// Expects Authorization: Bearer <supabase_access_token> OR sb-access-token cookie
+// Auth: Authorization: Bearer <supabase_access_token> OR sb-access-token cookie
 // Body: { plan: "project" | "lifetime" }
 
 import { NextResponse } from "next/server";
@@ -8,19 +8,17 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 function clean(v: any) {
   return (v ?? "").toString().trim();
 }
 
 function extractAccessToken(headers: Headers) {
+  // 1) Authorization: Bearer <token>
   const auth = headers.get("authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
+  // 2) Cookie fallback: sb-access-token=<token>
   const cookie = headers.get("cookie") || "";
   const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (sbAccess?.[1]) {
@@ -30,11 +28,13 @@ function extractAccessToken(headers: Headers) {
       return sbAccess[1];
     }
   }
-
   return null;
 }
 
 async function getUserIdFromRequest(req: Request) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
 
   const token = extractAccessToken(req.headers);
@@ -51,26 +51,26 @@ async function getUserIdFromRequest(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    if (!SUPABASE_URL) {
-      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
-    }
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
-        { status: 500 }
-      );
-    }
-
     const body = (await req.json().catch(() => ({}))) as any;
     const plan = clean(body?.plan).toLowerCase();
 
-    if (!["project", "lifetime"].includes(plan)) {
+    if (plan !== "project" && plan !== "lifetime") {
       return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
     }
 
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+    }
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -80,11 +80,7 @@ export async function POST(req: Request) {
     const up = await supabaseAdmin
       .from("usage_limits")
       .upsert(
-        {
-          user_id: userId,
-          plan,
-          updated_at: new Date().toISOString(),
-        },
+        { user_id: userId, plan, updated_at: new Date().toISOString() },
         { onConflict: "user_id" }
       );
 
@@ -104,7 +100,7 @@ export async function POST(req: Request) {
   }
 }
 
-// Keep legacy behavior: non-POST => 405 JSON
+// Keep legacy-ish behavior for non-POST
 export async function GET() {
   return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }

@@ -1,7 +1,3 @@
-// app/api/paypal-capture-order/route.ts
-// Captures a PayPal order, then upgrades the user's plan in Supabase usage_limits.
-// Requires logged-in user (via Authorization Bearer token OR sb-access-token cookie).
-
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -27,18 +23,15 @@ function basicAuth() {
 }
 
 function clean(v: any) {
-  return (v ?? "").toString().trim();
-}
-function cleanLower(v: any) {
-  return clean(v).toLowerCase();
+  return (v ?? "").toString().trim().toLowerCase();
 }
 
-function extractAccessToken(req: Request) {
-  const auth = req.headers.get("authorization") || "";
+function extractAccessToken(headers: Headers) {
+  const auth = headers.get("authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
-  const cookie = req.headers.get("cookie") || "";
+  const cookie = headers.get("cookie") || "";
   const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (sbAccess?.[1]) {
     try {
@@ -52,7 +45,7 @@ function extractAccessToken(req: Request) {
 }
 
 async function requireUserId(req: Request) {
-  const token = extractAccessToken(req);
+  const token = extractAccessToken(req.headers);
   if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
 
   const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -85,17 +78,12 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => ({}))) as any;
-    const orderID =
-      clean(body?.orderID) ||
-      clean(body?.orderId) ||
-      clean(body?.id) ||
-      clean(body?.order_id);
-
+    const orderID = (body?.orderID || "").toString().trim();
     if (!orderID) {
       return NextResponse.json({ error: "missing_orderID" }, { status: 400 });
     }
 
-    // Capture payment (PayPal)
+    // Capture payment
     const resp = await fetch(
       `${paypalBase()}/v2/checkout/orders/${encodeURIComponent(orderID)}/capture`,
       {
@@ -104,12 +92,10 @@ export async function POST(req: Request) {
           Authorization: `Basic ${basicAuth()}`,
           "Content-Type": "application/json",
         },
-        cache: "no-store",
       }
     );
 
     const data = await resp.json().catch(() => ({}));
-
     if (!resp.ok) {
       return NextResponse.json(
         { error: "paypal_capture_failed", details: data },
@@ -117,8 +103,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Determine plan from purchase_units description
-    const desc = cleanLower(data?.purchase_units?.[0]?.description || "");
+    // Determine plan from purchase_units description (simple + works with our create order)
+    const desc = clean(data?.purchase_units?.[0]?.description || "");
     const plan = desc.includes("lifetime") ? "lifetime" : "project";
 
     // Upgrade user in usage_limits table
@@ -126,12 +112,10 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const up = await supabaseAdmin
-      .from("usage_limits")
-      .upsert(
-        { user_id: userId, plan, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" }
-      );
+    const up = await supabaseAdmin.from("usage_limits").upsert(
+      { user_id: userId, plan, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
 
     if (up.error) {
       return NextResponse.json(
