@@ -3,7 +3,6 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
-// Stripe requires the raw body. This tells Next not to parse it.
 export const dynamic = "force-dynamic";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -11,68 +10,113 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function clean(v: any) {
+  return (v ?? "").toString().trim().toLowerCase();
+}
+
+function ok() {
+  // Always acknowledge quickly with 200 so Stripe doesn’t keep retrying non-actionable events
+  return NextResponse.json({ received: true }, { status: 200 });
+}
+
 export async function POST(req: Request) {
   try {
     if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
-      return new NextResponse("Missing Stripe webhook env vars", { status: 500 });
+      return NextResponse.json(
+        { error: "missing_stripe_env" },
+        { status: 500 }
+      );
     }
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return new NextResponse("Missing Supabase service env vars", { status: 500 });
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: "missing_service_role_key" }, { status: 500 });
     }
 
-    const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
+    // Don’t pin apiVersion unless you must; Stripe TS types can break builds.
+    const stripe = new Stripe(STRIPE_SECRET_KEY);
 
-    // IMPORTANT: raw body
-    const rawBody = await req.text();
+    // App Router: use raw body bytes
+    const rawBody = Buffer.from(await req.arrayBuffer());
+    const sig = req.headers.get("stripe-signature") || "";
 
-    const sig = req.headers.get("stripe-signature");
-    if (!sig) return new NextResponse("Missing stripe-signature header", { status: 400 });
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      // Stripe must receive 400 for invalid signature, otherwise it will keep retrying forever
+      return new NextResponse(
+        `Webhook Error: ${err?.message || "Invalid signature"}`,
+        { status: 400 }
+      );
+    }
 
-    const event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
-
-    // Only handle what we need
+    // Only act on checkout completion
     if (event.type !== "checkout.session.completed") {
-      return NextResponse.json({ received: true }, { status: 200 });
+      return ok();
     }
 
     const session = event.data.object as Stripe.Checkout.Session;
 
-    if (session.payment_status !== "paid") {
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
+    // Be permissive here: Stripe can represent “paid/complete” slightly differently across flows.
+    const paymentPaid =
+      session.payment_status === "paid" || session.status === "complete";
+
+    if (!paymentPaid) return ok();
 
     const userId = (session.metadata?.user_id || "").toString().trim();
-    const plan = (session.metadata?.plan || "").toString().trim().toLowerCase();
+    const plan = clean(session.metadata?.plan);
 
-    if (!userId || (plan !== "project" && plan !== "lifetime")) {
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
+    if (!userId) return ok();
+    if (plan !== "project" && plan !== "lifetime") return ok();
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
 
-    // NOTE: your old code had a typo table name "usable_limits".
-    // I’m keeping it but making it non-fatal so builds don’t break if it doesn't exist.
-    const now = new Date().toISOString();
+    const payload = {
+      user_id: userId,
+      plan,
+      updated_at: new Date().toISOString(),
+    };
 
-    await supabaseAdmin
+    // This one must succeed. If it fails, return 500 so Stripe retries.
+    const up1 = await supabaseAdmin
       .from("usage_limits")
-      .upsert({ user_id: userId, plan, updated_at: now }, { onConflict: "user_id" });
+      .upsert(payload, { onConflict: "user_id" });
 
-    // Optional: keep this if you truly have the table. If not, delete it.
-    await supabaseAdmin
-      .from("usable_limits")
-      .upsert({ user_id: userId, plan, updated_at: now }, { onConflict: "user_id" });
+    if (up1.error) {
+      return NextResponse.json(
+        { error: "usage_limits_upsert_failed", details: up1.error.message },
+        { status: 500 }
+      );
+    }
 
-    return NextResponse.json({ received: true }, { status: 200 });
+    // Best-effort legacy table; ignore if it doesn’t exist.
+    try {
+      const up2 = await supabaseAdmin
+        .from("usable_limits")
+        .upsert(payload, { onConflict: "user_id" });
+
+      // If table exists but write fails, still don’t fail the webhook.
+      // usage_limits is the source of truth.
+      void up2;
+    } catch {
+      // ignore
+    }
+
+    return ok();
   } catch (err: any) {
-    // Stripe expects a 400 on signature/body failures
-    return new NextResponse(`Webhook Error: ${String(err?.message || err)}`, { status: 400 });
+    // For unexpected failures, return 500 so Stripe retries.
+    return NextResponse.json(
+      { error: "webhook_server_error", details: err?.message || String(err) },
+      { status: 500 }
+    );
   }
 }
 
-// Keep legacy behavior: non-POST => 405 JSON
+// Keep legacy behavior
 export async function GET() {
   return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }

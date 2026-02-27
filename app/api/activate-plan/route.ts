@@ -1,46 +1,44 @@
 // app/api/activate-plan/route.ts
 // Sets usage_limits.plan for the authenticated user.
-// Auth: Authorization: Bearer <supabase_access_token> OR sb-access-token cookie
+// Expects Authorization: Bearer <token> OR cookie sb-access-token
+// app/api/activate-plan/route.ts
+// Sets usage_limits.plan for the authenticated user.
+// Expects Authorization: Bearer <token> OR cookie sb-access-token
 // Body: { plan: "project" | "lifetime" }
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-function clean(v: any) {
-  return (v ?? "").toString().trim();
+function clean(v: unknown) {
+  return (v ?? "").toString().trim().toLowerCase();
 }
 
-function extractAccessToken(headers: Headers) {
-  // 1) Authorization: Bearer <token>
-  const auth = headers.get("authorization") || "";
+function extractAccessToken(req: Request) {
+  // 1) Authorization header
+  const auth = req.headers.get("authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
-  // 2) Cookie fallback: sb-access-token=<token>
-  const cookie = headers.get("cookie") || "";
-  const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
-  if (sbAccess?.[1]) {
-    try {
-      return decodeURIComponent(sbAccess[1]);
-    } catch {
-      return sbAccess[1];
-    }
-  }
+  // 2) Cookie sb-access-token
+  const cookie = req.headers.get("cookie") || "";
+  const match = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
+  if (match?.[1]) return decodeURIComponent(match[1]);
+
   return null;
 }
 
 async function getUserIdFromRequest(req: Request) {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon =
+    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const token = extractAccessToken(req);
+  if (!url || !anon || !token) return null;
 
-  const token = extractAccessToken(req.headers);
-  if (!token) return null;
-
-  const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const authed = createClient(url, anon, {
     auth: { persistSession: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -51,8 +49,8 @@ async function getUserIdFromRequest(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as any;
-    const plan = clean(body?.plan).toLowerCase();
+    const body = await req.json().catch(() => ({} as any));
+    const plan = clean(body?.plan);
 
     if (plan !== "project" && plan !== "lifetime") {
       return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
@@ -63,21 +61,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
     }
 
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!SUPABASE_URL) {
-      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
-    }
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
-    }
-
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false },
-    });
-
-    const up = await supabaseAdmin
+    const sb = supabaseAdmin();
+    const up = await sb
       .from("usage_limits")
       .upsert(
         { user_id: userId, plan, updated_at: new Date().toISOString() },
@@ -91,7 +76,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(
       { error: "server_error", details: String(err?.message || err) },
@@ -100,13 +85,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Keep legacy-ish behavior for non-POST
 export async function GET() {
-  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
-}
-export async function PUT() {
-  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
-}
-export async function DELETE() {
-  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
+  return NextResponse.json({ error: "Use POST" }, { status: 405 });
 }

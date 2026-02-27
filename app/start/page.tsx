@@ -17,7 +17,8 @@ export default function StartPage() {
       }
     };
 
-    const authHeaders = async () => {
+    // ✅ FIX: Always return a plain string map (never optional undefined fields)
+    const authHeaders = async (): Promise<Record<string, string>> => {
       try {
         const client = (window as any).AuthoredAccount?.client;
         if (!client?.auth?.getSession) return {};
@@ -76,7 +77,12 @@ export default function StartPage() {
       box.style.display = "block";
       box.scrollIntoView({ behavior: "smooth", block: "start" });
 
-      const disableIds = ["expandBtn", "regenExpandedBtn", "genIntroBtn", "genTitlesBtn"];
+      const disableIds = [
+        "expandBtn",
+        "regenExpandedBtn",
+        "genIntroBtn",
+        "genTitlesBtn",
+      ];
       disableIds.forEach((id) => {
         const b = $(id);
         if (b) b.disabled = true;
@@ -419,9 +425,15 @@ export default function StartPage() {
       out.innerHTML = "<li>Generating title ideas...</li>";
 
       try {
+        // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(await authHeaders()),
+        };
+
         const resp = await fetch("/api/titles", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+          headers,
           body: JSON.stringify({
             topic: clean($("topic")?.value),
             audience: clean($("audience")?.value),
@@ -488,9 +500,15 @@ export default function StartPage() {
       if (introOut) introOut.textContent = "Generating introduction...";
 
       try {
+        // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(await authHeaders()),
+        };
+
         const resp = await fetch("/api/intro", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+          headers,
           body: JSON.stringify({
             // ✅ intro endpoint expects these fields
             bookTitle: (window as any).__title || clean($("titleOut")?.textContent),
@@ -582,9 +600,15 @@ export default function StartPage() {
       if (expandedOut)
         expandedOut.textContent = mode === "regen" ? "Regenerating..." : "Expanding...";
 
+      // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      };
+
       const resp = await fetch("/api/expand", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        headers,
         body: JSON.stringify({
           projectId: (window as any).__projectId,
           bookTitle: (window as any).__title || clean($("titleOut")?.textContent) || "Untitled",

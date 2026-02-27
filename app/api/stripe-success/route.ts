@@ -10,38 +10,73 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function originFromReq(req: Request) {
-  // Prefer forwarded headers on Vercel/proxies
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return `${proto}://${host}`;
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    (req.headers.get("host")?.includes("localhost") ? "http" : "https");
+
+  const host =
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    "";
+
+  const envOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    "";
+
+  if (!host && envOrigin) return envOrigin.replace(/\/+$/, "");
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function redirectStart(req: Request, qs: Record<string, string>) {
+  const origin = originFromReq(req);
+  const params = new URLSearchParams(qs);
+  return NextResponse.redirect(`${origin}/start?${params.toString()}`, 303);
 }
 
 export async function GET(req: Request) {
   try {
-    if (!STRIPE_SECRET_KEY)
-      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
-    if (!SUPABASE_URL)
-      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
-    if (!SUPABASE_SERVICE_ROLE_KEY)
-      return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+    if (!STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: "missing_stripe_secret_key" }, { status: 500 });
+    }
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: "missing_service_role_key" }, { status: 500 });
+    }
 
     const { searchParams } = new URL(req.url);
     const sessionId = (searchParams.get("session_id") || "").trim();
-    if (!sessionId) return NextResponse.json({ error: "Missing session_id" }, { status: 400 });
+    if (!sessionId) {
+      return NextResponse.json({ error: "missing_session_id" }, { status: 400 });
+    }
 
-    const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
+    const stripe = new Stripe(STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (!session || (session.payment_status !== "paid" && session.status !== "complete")) {
-      return NextResponse.json({ error: "payment_not_complete" }, { status: 400 });
+    if (!session) {
+      // Don’t hard-fail; bounce user back.
+      return redirectStart(req, { upgraded: "0", error: "missing_session" });
+    }
+
+    const isPaid =
+      session.payment_status === "paid" || session.status === "complete";
+
+    if (!isPaid) {
+      // Stripe can lag; don’t show a scary error page.
+      // Let the user land on /start and we can show a “processing payment” message there later.
+      return redirectStart(req, { pending: "1" });
     }
 
     const userId = (session.metadata?.user_id || "").toString().trim();
     const plan = (session.metadata?.plan || "").toString().trim().toLowerCase();
 
-    if (!userId) return NextResponse.json({ error: "missing_user_id_metadata" }, { status: 400 });
+    if (!userId) {
+      return redirectStart(req, { upgraded: "0", error: "missing_user_id_metadata" });
+    }
     if (plan !== "project" && plan !== "lifetime") {
-      return NextResponse.json({ error: "invalid_plan_metadata" }, { status: 400 });
+      return redirectStart(req, { upgraded: "0", error: "invalid_plan_metadata" });
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -56,18 +91,11 @@ export async function GET(req: Request) {
       );
 
     if (up.error) {
-      return NextResponse.json(
-        { error: "supabase_update_failed", details: up.error.message },
-        { status: 500 }
-      );
+      // Return 500 so you see it, but still don’t strand the user on a JSON error page
+      return redirectStart(req, { upgraded: "0", error: "entitlement_write_failed" });
     }
 
-    // Redirect back to your Next app route (you said fully Next migration)
-    // If your app page is /start (Next), use that.
-    // If you still have static start.html, swap to /start.html.
-    const origin = originFromReq(req);
-    const redirectTo = `${origin}/start?upgraded=${encodeURIComponent(plan)}`;
-    return NextResponse.redirect(redirectTo, 303);
+    return redirectStart(req, { upgraded: plan });
   } catch (err: any) {
     return NextResponse.json(
       { error: "stripe_success_failed", details: String(err?.message || err) },

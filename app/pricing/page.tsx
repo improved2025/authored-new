@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -34,11 +34,15 @@ export default function PricingPage() {
   const [token, setToken] = useState<string | null>(null);
   const [paypalReady, setPaypalReady] = useState(false);
 
+  const renderedRef = useRef(false); // prevents double-render of PayPal buttons
+
   const warn = (msg: string) => setWarnMsg(msg || "");
 
-  // --- Auth ---
+  // --- Auth (keep token updated, not just once) ---
   useEffect(() => {
-    (async () => {
+    let alive = true;
+
+    async function syncSession() {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
@@ -48,11 +52,28 @@ export default function PricingPage() {
           router.replace(`/login?next=${encodeURIComponent("/pricing")}`);
           return;
         }
-        setToken(t);
+
+        if (alive) setToken(t);
       } catch (e: any) {
         warn(e?.message || "Auth error. Please refresh.");
       }
-    })();
+    }
+
+    syncSession();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const t = session?.access_token || null;
+      if (!t) {
+        router.replace(`/login?next=${encodeURIComponent("/pricing")}`);
+        return;
+      }
+      setToken(t);
+    });
+
+    return () => {
+      alive = false;
+      sub?.subscription?.unsubscribe();
+    };
   }, [router]);
 
   // --- Load PayPal SDK once ---
@@ -69,11 +90,20 @@ export default function PricingPage() {
       }
 
       p = new Promise((resolve) => {
+        // already loaded
         if (window.paypal?.Buttons) return resolve(true);
+
+        const existing = document.querySelector('script[data-paypal-sdk="1"]') as HTMLScriptElement | null;
+        if (existing) {
+          existing.addEventListener("load", () => resolve(true), { once: true });
+          existing.addEventListener("error", () => resolve(false), { once: true });
+          return;
+        }
 
         const s = document.createElement("script");
         s.src = paypalSdkSrc();
         s.async = true;
+        s.setAttribute("data-paypal-sdk", "1");
         s.onload = () => resolve(true);
         s.onerror = () => resolve(false);
         document.head.appendChild(s);
@@ -95,11 +125,14 @@ export default function PricingPage() {
   // --- Render PayPal buttons (Project + Lifetime) ---
   useEffect(() => {
     if (!token) return;
+    if (renderedRef.current) return; // don’t render twice
+
+    let cancelled = false;
 
     (async () => {
       const ok = await paypalSdkPromise();
       if (!ok) {
-        warn("PayPal SDK did not load. Check your client id.");
+        warn("PayPal SDK did not load. Check NEXT_PUBLIC_PAYPAL_CLIENT_ID.");
         return;
       }
 
@@ -109,12 +142,21 @@ export default function PricingPage() {
         return;
       }
 
+      if (cancelled) return;
+
       setPaypalReady(true);
 
+      // Render once per mount. Buttons will still use the latest token via closure
+      // because we pass token explicitly here.
       await renderPayPal("paypalProject", "project", token);
       await renderPayPal("paypalLifetime", "lifetime", token);
+
+      renderedRef.current = true;
     })();
 
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -122,8 +164,13 @@ export default function PricingPage() {
     const host = document.getElementById(containerId);
     if (!host) return;
 
-    // prevent double-render on fast refresh
+    // prevent double-render on fast refresh / dev re-renders
     host.innerHTML = "";
+
+    if (!window.paypal?.Buttons) {
+      warn("PayPal Buttons are unavailable. Refresh the page.");
+      return;
+    }
 
     window.paypal
       .Buttons({
@@ -142,6 +189,7 @@ export default function PricingPage() {
           if (!resp.ok || !data?.orderID) {
             throw new Error(data?.error || "Could not create PayPal order");
           }
+
           return data.orderID;
         },
 
@@ -158,7 +206,7 @@ export default function PricingPage() {
 
           const out = await resp.json().catch(() => ({}));
           if (!resp.ok || !out?.ok) {
-            warn("Payment captured but unlock failed. Refresh and try again.");
+            warn(out?.error ? `Unlock failed: ${out.error}` : "Payment captured but unlock failed. Refresh and try again.");
             return;
           }
 
@@ -173,7 +221,6 @@ export default function PricingPage() {
   }
 
   function goStripe(plan: Plan) {
-    // same behavior as old pricing.html
     window.location.href =
       plan === "project"
         ? "/api/stripe-create-checkout?plan=project"
@@ -269,14 +316,12 @@ export default function PricingPage() {
           </Link>
         </div>
 
-        {/* If PayPal is missing, give a very clear hint */}
         {!PAYPAL_CLIENT_ID ? (
           <p className="mutedSm" style={{ marginTop: 14 }}>
             Add <strong className="strong">NEXT_PUBLIC_PAYPAL_CLIENT_ID</strong> to your env vars to enable PayPal.
           </p>
         ) : null}
 
-        {/* Optional small signal that PayPal has loaded */}
         {PAYPAL_CLIENT_ID && token && !paypalReady ? (
           <p className="mutedSm" style={{ marginTop: 10 }}>
             Loading PayPal…

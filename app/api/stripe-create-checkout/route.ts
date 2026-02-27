@@ -17,10 +17,12 @@ function clean(v: any) {
 }
 
 function extractAccessToken(headers: Headers) {
-  const auth = headers.get("authorization") || "";
+  // 1) Authorization: Bearer <token>
+  const auth = headers.get("authorization") || headers.get("Authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
+  // 2) Cookie fallback
   const cookie = headers.get("cookie") || "";
   const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (sbAccess?.[1]) {
@@ -34,7 +36,7 @@ function extractAccessToken(headers: Headers) {
   return null;
 }
 
-async function getUserIdFromRequest(req: Request) {
+async function getUserFromRequest(req: Request) {
   const token = extractAccessToken(req.headers);
   if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
 
@@ -44,24 +46,44 @@ async function getUserIdFromRequest(req: Request) {
   });
 
   const u = await authed.auth.getUser();
-  return u?.data?.user?.id || null;
+  return u?.data?.user || null;
 }
 
 function originFromReq(req: Request) {
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return `${proto}://${host}`;
+  // Prefer forwarded headers (Vercel/proxies), then fall back.
+  // Vercel commonly provides x-forwarded-proto and x-forwarded-host.
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    (req.headers.get("host")?.includes("localhost") ? "http" : "https");
+
+  const host =
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    "";
+
+  // If host is still missing, last resort to an env var (optional)
+  const envOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    "";
+
+  if (!host && envOrigin) return envOrigin.replace(/\/+$/, "");
+  return `${proto}://${host}`.replace(/\/+$/, "");
 }
 
 async function handler(req: Request, planFromQuery?: string) {
-  if (!STRIPE_SECRET_KEY)
-    return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
-  if (!STRIPE_PRICE_PROJECT)
-    return NextResponse.json({ error: "Missing STRIPE_PRICE_PROJECT" }, { status: 500 });
-  if (!STRIPE_PRICE_LIFETIME)
-    return NextResponse.json({ error: "Missing STRIPE_PRICE_LIFETIME" }, { status: 500 });
+  if (!STRIPE_SECRET_KEY) {
+    return NextResponse.json({ error: "missing_stripe_secret_key" }, { status: 500 });
+  }
+  if (!STRIPE_PRICE_PROJECT) {
+    return NextResponse.json({ error: "missing_stripe_price_project" }, { status: 500 });
+  }
+  if (!STRIPE_PRICE_LIFETIME) {
+    return NextResponse.json({ error: "missing_stripe_price_lifetime" }, { status: 500 });
+  }
 
-  const userId = await getUserIdFromRequest(req);
+  const user = await getUserFromRequest(req);
+  const userId = user?.id || null;
   if (!userId) return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
 
   // plan can come from query (?plan=project) OR POST body
@@ -80,21 +102,44 @@ async function handler(req: Request, planFromQuery?: string) {
 
   if (!priceId) return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
+  const stripe = new Stripe(STRIPE_SECRET_KEY);
   const origin = originFromReq(req);
+
+  // Safety: if origin is malformed, fail fast with actionable message
+  if (!origin.startsWith("http")) {
+    return NextResponse.json(
+      { error: "invalid_origin", details: `Could not determine origin from request headers.` },
+      { status: 500 }
+    );
+  }
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: [{ price: priceId, quantity: 1 }],
-    // keep old behavior (hits your API route after payment)
+
+    // Keep your legacy behavior (API route handles post-payment activation)
     success_url: `${origin}/api/stripe-success?session_id={CHECKOUT_SESSION_ID}`,
-    // fully-next migration: change to /pricing if you have a Next page
     cancel_url: `${origin}/pricing?canceled=1`,
+
+    // Metadata is what your webhook + success route depends on
     metadata: { user_id: userId, plan },
+
+    // Helpful for tracing in Stripe dashboard
+    client_reference_id: `${userId}:${plan}`,
+
+    // Optional but useful: prefill and attach email if available
+    customer_email: user?.email || undefined,
   });
 
+  if (!session.url) {
+    return NextResponse.json(
+      { error: "stripe_session_missing_url" },
+      { status: 500 }
+    );
+  }
+
   // Redirect browser to Stripe hosted checkout
-  return NextResponse.redirect(session.url as string, 303);
+  return NextResponse.redirect(session.url, 303);
 }
 
 export async function GET(req: Request) {

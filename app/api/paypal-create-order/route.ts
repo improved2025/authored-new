@@ -26,8 +26,12 @@ function basicAuth() {
   return Buffer.from(raw).toString("base64");
 }
 
+function clean(v: any) {
+  return (v ?? "").toString().trim().toLowerCase();
+}
+
 function extractAccessToken(headers: Headers) {
-  const auth = headers.get("authorization") || "";
+  const auth = headers.get("authorization") || headers.get("Authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
@@ -60,10 +64,10 @@ async function requireUserId(req: Request) {
 export async function POST(req: Request) {
   try {
     if (!PAYPAL_CLIENT_ID) {
-      return NextResponse.json({ error: "Missing PAYPAL_CLIENT_ID" }, { status: 500 });
+      return NextResponse.json({ error: "missing_paypal_client_id" }, { status: 500 });
     }
     if (!PAYPAL_CLIENT_SECRET) {
-      return NextResponse.json({ error: "Missing PAYPAL_CLIENT_SECRET" }, { status: 500 });
+      return NextResponse.json({ error: "missing_paypal_client_secret" }, { status: 500 });
     }
 
     const userId = await requireUserId(req);
@@ -72,11 +76,21 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => ({}))) as any;
-    const plan = (body?.plan || "").toString().trim().toLowerCase();
-    const amount = PRICE_USD[plan];
-    if (!amount) {
+    const plan = clean(body?.plan);
+    if (plan !== "project" && plan !== "lifetime") {
       return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
     }
+
+    const amount = PRICE_USD[plan];
+    if (!amount) {
+      return NextResponse.json({ error: "invalid_plan_amount" }, { status: 400 });
+    }
+
+    // Make this deterministic for capture:
+    // - custom_id carries plan (project/lifetime)
+    // - invoice_id carries userId (so capture can bind it to the right user)
+    // NOTE: invoice_id is meant to be unique; we make it unique per request.
+    const invoiceId = `authored:${userId}:${plan}:${Date.now()}`;
 
     const resp = await fetch(`${paypalBase()}/v2/checkout/orders`, {
       method: "POST",
@@ -89,7 +103,12 @@ export async function POST(req: Request) {
         purchase_units: [
           {
             amount: { currency_code: "USD", value: amount },
-            custom_id: userId,
+
+            // Deterministic machine fields:
+            custom_id: plan,
+            invoice_id: invoiceId,
+
+            // Human readable:
             description: `Authored ${plan} plan`,
           },
         ],
@@ -100,11 +119,12 @@ export async function POST(req: Request) {
     if (!resp.ok || !data?.id) {
       return NextResponse.json(
         { error: "paypal_create_order_failed", details: data },
-        { status: 500 }
+        { status: 502 }
       );
     }
 
-    return NextResponse.json({ orderID: data.id }, { status: 200 });
+    // Return invoiceId too (optional but useful for debugging / support)
+    return NextResponse.json({ orderID: data.id, invoiceId }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
       { error: "server_error", details: String(err?.message || err) },
