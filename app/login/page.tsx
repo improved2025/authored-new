@@ -11,7 +11,6 @@ export default function LoginPage() {
         strategy="beforeInteractive"
       />
       <Script src="/account.js" strategy="beforeInteractive" />
-      <Script src="/auth-guard.js" strategy="beforeInteractive" />
 
       <LoginBackground />
       <Suspense fallback={<div />}>

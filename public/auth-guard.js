@@ -1,19 +1,18 @@
 // public/auth-guard.js
-(async () => {
-  // Don’t run guard on the login page (prevents blank/loop)
+(async function () {
+  // Never guard the login page (otherwise blank/redirect loop)
   if (location.pathname.startsWith("/login")) return;
 
   const client = window.AuthoredAccount?.client;
 
-  // account.js might not be ready yet
+  // Wait until account.js has created the client
   if (!client?.auth?.getSession) {
     setTimeout(() => location.reload(), 50);
     return;
   }
 
-  const {
-    data: { session },
-  } = await client.auth.getSession();
+  const { data } = await client.auth.getSession();
+  const session = data?.session;
 
   if (!session) {
     window.location.replace("/login");
