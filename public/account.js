@@ -75,24 +75,57 @@ const SUPABASE_ANON_KEY =
       return data?.user || null;
     }
 
+    // ✅ FIX: Redirect to Next routes (/login, /verify) instead of login.html
     async function requireLaunchReadyUser(redirectTo) {
       const { data, error } = await client.auth.getSession();
       if (error) throw error;
 
       const user = data?.session?.user || null;
 
+      const nextPath = window.location.pathname || "/";
+
+      const goLogin = () =>
+        window.location.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+
+      const goVerify = () =>
+        window.location.replace(`/verify?next=${encodeURIComponent(nextPath)}`);
+
+      // If caller passed a redirect, respect it, but normalize legacy *.html to Next routes
+      const normalizedRedirect = (() => {
+        if (!redirectTo) return "";
+        const r = String(redirectTo);
+        if (r === "login.html" || r === "/login.html") return "/login";
+        if (r === "verify.html" || r === "/verify.html") return "/verify";
+        return r;
+      })();
+
       if (!user) {
-        if (redirectTo) window.location.replace(redirectTo);
+        if (normalizedRedirect) {
+          window.location.replace(normalizedRedirect);
+        } else {
+          goLogin();
+        }
         throw new Error("Not signed in");
       }
 
       if (!isRealUser(user)) {
-        if (redirectTo) window.location.replace(redirectTo);
+        if (normalizedRedirect) {
+          window.location.replace(normalizedRedirect);
+        } else {
+          goLogin();
+        }
         throw new Error("Guest session not allowed here");
       }
 
       if (!isEmailConfirmed(user)) {
-        if (redirectTo) window.location.replace(redirectTo);
+        // verify should always win here
+        if (normalizedRedirect && normalizedRedirect.startsWith("/verify")) {
+          window.location.replace(
+            `${normalizedRedirect}?next=${encodeURIComponent(nextPath)}`
+          );
+        } else {
+          goVerify();
+        }
         throw new Error("Email not confirmed");
       }
 
@@ -195,7 +228,8 @@ const SUPABASE_ANON_KEY =
       },
 
       // For pages that require a confirmed real user (start.html)
-      async requireLaunchReadyUser(redirectTo = "login.html") {
+      // ✅ FIX: default redirect is /login (not login.html)
+      async requireLaunchReadyUser(redirectTo = "/login") {
         try {
           return await requireLaunchReadyUser(redirectTo);
         } catch {

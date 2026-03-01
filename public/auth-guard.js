@@ -1,33 +1,82 @@
 // public/auth-guard.js
-(async function () {
-  // Never guard the login page (otherwise blank/redirect loop)
-  if (location.pathname.startsWith("/login")) return;
+(() => {
+  const isPublicRoute = () => {
+    const p = window.location.pathname || "";
+    return (
+      p === "/" ||
+      p.startsWith("/login") ||
+      p.startsWith("/signup") ||
+      p.startsWith("/verify") ||
+      p.startsWith("/_next") ||
+      p.startsWith("/api")
+    );
+  };
 
-  const client = window.AuthoredAccount?.client;
+  // Don't run guard on public routes (especially /login)
+  if (isPublicRoute()) return;
 
-  // Wait until account.js has created the client
-  if (!client?.auth?.getSession) {
-    setTimeout(() => location.reload(), 50);
-    return;
-  }
+  const nextPath = () => {
+    const p = window.location.pathname || "/";
+    const s = window.location.search || "";
+    return p + s;
+  };
 
-  const { data } = await client.auth.getSession();
-  const session = data?.session;
+  const goLogin = () => {
+    window.location.replace("/login?next=" + encodeURIComponent(nextPath()));
+  };
 
-  if (!session) {
-    window.location.replace("/login");
-    return;
-  }
+  const goVerify = () => {
+    window.location.replace("/verify?next=" + encodeURIComponent(nextPath()));
+  };
 
-  // Treat anonymous as NOT authenticated
-  const provider = session.user?.app_metadata?.provider;
-  const isAnon =
-    session.user?.is_anonymous === true ||
-    provider === "anonymous" ||
-    !session.user?.email;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  if (isAnon) {
-    window.location.replace("/login");
-    return;
-  }
+  // Run async without top-level await
+  (async () => {
+    try {
+      // Wait briefly for account.js to initialize (avoid reload loops)
+      for (let i = 0; i < 40; i++) {
+        const client = window.AuthoredAccount?.client;
+        if (client?.auth?.getSession) break;
+        await sleep(50);
+      }
+
+      const account = window.AuthoredAccount;
+      const client = account?.client;
+
+      if (!client?.auth?.getSession) {
+        // If still not ready, fail closed to login
+        goLogin();
+        return;
+      }
+
+      const { data } = await client.auth.getSession();
+      const session = data?.session;
+
+      if (!session) {
+        goLogin();
+        return;
+      }
+
+      const user = session.user;
+      const provider = user?.app_metadata?.provider;
+
+      const isAnon =
+        user?.is_anonymous === true ||
+        provider === "anonymous" ||
+        !user?.email;
+
+      if (isAnon) {
+        goLogin();
+        return;
+      }
+
+      if (!user?.email_confirmed_at) {
+        goVerify();
+        return;
+      }
+    } catch {
+      goLogin();
+    }
+  })();
 })();
