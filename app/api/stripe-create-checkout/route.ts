@@ -22,7 +22,7 @@ function extractAccessToken(headers: Headers) {
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
-  // 2) Cookie fallback (legacy)
+  // 2) Cookie fallback
   const cookie = headers.get("cookie") || "";
   const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (sbAccess?.[1]) {
@@ -104,7 +104,7 @@ async function handler(req: Request, planFromQuery?: string) {
 
   if (!origin.startsWith("http")) {
     return NextResponse.json(
-      { error: "invalid_origin", details: `Could not determine origin from request headers.` },
+      { error: "invalid_origin", details: "Could not determine origin from request headers." },
       { status: 500 }
     );
   }
@@ -113,25 +113,21 @@ async function handler(req: Request, planFromQuery?: string) {
     mode: "payment",
     line_items: [{ price: priceId, quantity: 1 }],
 
-    // ✅ Success is UX-only. Webhook is the single source of truth for entitlements.
-    // If you don't need the session_id on the client, you can remove it from the URL.
+    // ✅ SUCCESS IS UX-ONLY. WEBHOOK IS THE ONLY ENTITLEMENT WRITER.
     success_url: `${origin}/start?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/pricing?canceled=1`,
 
-    // ✅ Keep only what the webhook needs.
+    // ✅ Webhook needs plan
     metadata: { plan },
 
-    // ✅ Strong binding: webhook should prefer this for user id.
+    // ✅ Strong binding for webhook to map session → user
     client_reference_id: userId,
 
     customer_email: user?.email || undefined,
   });
 
   if (!session.url) {
-    return NextResponse.json(
-      { error: "stripe_session_missing_url" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "stripe_session_missing_url" }, { status: 500 });
   }
 
   return NextResponse.redirect(session.url, 303);
