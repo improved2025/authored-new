@@ -7,12 +7,17 @@ const PAYPAL_ENV = (process.env.PAYPAL_ENV || "sandbox").toLowerCase();
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// Optional: override prices from env to avoid code drift
+const PAYPAL_PRICE_PROJECT = process.env.PAYPAL_PRICE_PROJECT;
+const PAYPAL_PRICE_LIFETIME = process.env.PAYPAL_PRICE_LIFETIME;
 
 const PRICE_USD: Record<string, string> = {
-  project: "49.00",
-  lifetime: "149.00",
+  project: PAYPAL_PRICE_PROJECT || "49.00",
+  lifetime: PAYPAL_PRICE_LIFETIME || "149.00",
 };
 
 function paypalBase() {
@@ -69,6 +74,12 @@ export async function POST(req: Request) {
     if (!PAYPAL_CLIENT_SECRET) {
       return NextResponse.json({ error: "missing_paypal_client_secret" }, { status: 500 });
     }
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
+    }
+    if (!SUPABASE_ANON_KEY) {
+      return NextResponse.json({ error: "missing_supabase_anon_key" }, { status: 500 });
+    }
 
     const userId = await requireUserId(req);
     if (!userId) {
@@ -86,10 +97,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_plan_amount" }, { status: 400 });
     }
 
-    // Make this deterministic for capture:
-    // - custom_id carries plan (project/lifetime)
-    // - invoice_id carries userId (so capture can bind it to the right user)
-    // NOTE: invoice_id is meant to be unique; we make it unique per request.
     const invoiceId = `authored:${userId}:${plan}:${Date.now()}`;
 
     const resp = await fetch(`${paypalBase()}/v2/checkout/orders`, {
@@ -103,12 +110,8 @@ export async function POST(req: Request) {
         purchase_units: [
           {
             amount: { currency_code: "USD", value: amount },
-
-            // Deterministic machine fields:
             custom_id: plan,
             invoice_id: invoiceId,
-
-            // Human readable:
             description: `Authored ${plan} plan`,
           },
         ],
@@ -123,7 +126,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Return invoiceId too (optional but useful for debugging / support)
     return NextResponse.json({ orderID: data.id, invoiceId }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
@@ -133,7 +135,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Keep legacy behavior: non-POST => 405 JSON
 export async function GET() {
   return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }
