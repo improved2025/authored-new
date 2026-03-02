@@ -1,9 +1,6 @@
 // app/api/activate-plan/route.ts
 // Sets usage_limits.plan for the authenticated user.
-// Expects Authorization: Bearer <token> OR cookie sb-access-token
-// app/api/activate-plan/route.ts
-// Sets usage_limits.plan for the authenticated user.
-// Expects Authorization: Bearer <token> OR cookie sb-access-token
+// SECURITY: protected by ACTIVATE_PLAN_SECRET + x-activate-plan-secret header.
 // Body: { plan: "project" | "lifetime" }
 
 import { NextResponse } from "next/server";
@@ -17,12 +14,10 @@ function clean(v: unknown) {
 }
 
 function extractAccessToken(req: Request) {
-  // 1) Authorization header
   const auth = req.headers.get("authorization") || "";
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
-  // 2) Cookie sb-access-token
   const cookie = req.headers.get("cookie") || "";
   const match = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (match?.[1]) return decodeURIComponent(match[1]);
@@ -47,8 +42,21 @@ async function getUserIdFromRequest(req: Request) {
   return u?.data?.user?.id || null;
 }
 
+function isAuthorized(req: Request) {
+  const required = (process.env.ACTIVATE_PLAN_SECRET || "").trim();
+  if (!required) return false;
+
+  const provided = (req.headers.get("x-activate-plan-secret") || "").trim();
+  return provided && provided === required;
+}
+
 export async function POST(req: Request) {
   try {
+    // ✅ Hard stop unless you know the secret (prevents self-upgrade exploit)
+    if (!isAuthorized(req)) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
     const body = await req.json().catch(() => ({} as any));
     const plan = clean(body?.plan);
 
