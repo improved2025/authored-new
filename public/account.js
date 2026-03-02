@@ -2,41 +2,19 @@
 // Shared auth + session helpers for all pages.
 // Requires: <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-/**
- * Surgical config fix:
- * - Prefer runtime-injected config: window.__APP_CONFIG__ or window.__AUTHORED_CONFIG__
- * - Allow localhost fallback ONLY (to avoid breaking local dev)
- * - In production, require injected values to prevent env drift.
- */
 function readSupabaseConfig() {
   const cfg = window.__APP_CONFIG__ || window.__AUTHORED_CONFIG__ || {};
-  const url =
-    (cfg.supabaseUrl || cfg.SUPABASE_URL || "").toString().trim();
-  const anonKey =
-    (cfg.supabaseAnonKey || cfg.SUPABASE_ANON_KEY || "").toString().trim();
-
-  // Localhost/dev fallback only (prevents breaking if you haven't injected config yet)
-  const isLocalhost =
-    location.hostname === "localhost" ||
-    location.hostname === "127.0.0.1" ||
-    location.hostname.endsWith(".local");
-
-  if (isLocalhost && (!url || !anonKey)) {
-    // ✅ Keep your previous values ONLY for localhost so dev doesn’t break.
-    return {
-      url: "https://siiivusryuotqmbcerqp.supabase.co",
-      anonKey:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpaWl2dXNyeXVvdHFtYmNlcnFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0ODc4NjIsImV4cCI6MjA4MjA2Mzg2Mn0.Sgx9Qy0t-8w6M2BeFyWRR3lCHcZkj_cLioJAq5XlNKc"
-    };
-  }
+  const url = (cfg.supabaseUrl || cfg.SUPABASE_URL || "").toString().trim();
+  const anonKey = (cfg.supabaseAnonKey || cfg.SUPABASE_ANON_KEY || "")
+    .toString()
+    .trim();
 
   return { url, anonKey };
 }
 
 (function initAuthoredAccount() {
   try {
-    const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } =
-      readSupabaseConfig();
+    const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = readSupabaseConfig();
 
     if (!SUPABASE_URL || SUPABASE_URL.includes("PASTE_")) {
       throw new Error(
@@ -115,7 +93,6 @@ function readSupabaseConfig() {
       if (error) throw error;
 
       const user = data?.session?.user || null;
-
       const nextPath = window.location.pathname || "/";
 
       const goLogin = () =>
@@ -124,7 +101,6 @@ function readSupabaseConfig() {
       const goVerify = () =>
         window.location.replace(`/verify?next=${encodeURIComponent(nextPath)}`);
 
-      // If caller passed a redirect, respect it, but normalize legacy *.html to Next routes
       const normalizedRedirect = (() => {
         if (!redirectTo) return "";
         const r = String(redirectTo);
@@ -152,7 +128,6 @@ function readSupabaseConfig() {
       }
 
       if (!isEmailConfirmed(user)) {
-        // verify should always win here
         if (normalizedRedirect && normalizedRedirect.startsWith("/verify")) {
           window.location.replace(
             `${normalizedRedirect}?next=${encodeURIComponent(nextPath)}`
@@ -176,26 +151,20 @@ function readSupabaseConfig() {
       return `authored_active_project_id_${userId}`;
     }
 
-    // Guest identity is NOT created server-side (anonymous auth disabled).
-    // Guests can still generate outline (frontend/localStorage), but anything
-    // that requires /api/* usage limits MUST be a real logged-in user.
     async function ensureIdentity() {
       const { data } = await client.auth.getSession();
       if (data?.session) {
         writeAuthCookies(data.session);
         return data.session;
       }
-      // No session and we are not creating anonymous users.
       writeAuthCookies(null);
       return null;
     }
 
-    // Keep cookies synced any time auth changes
     client.auth.onAuthStateChange((_event, session) => {
       writeAuthCookies(session || null);
     });
 
-    // Run once on load: keep cookies in sync (no anonymous sign-in)
     client.auth.getSession().then(({ data }) => {
       writeAuthCookies(data?.session || null);
       ensureIdentity().catch(() => {});
@@ -204,7 +173,6 @@ function readSupabaseConfig() {
     window.AuthoredAccount = {
       client,
 
-      // Expose checks
       isRealUser,
       isEmailConfirmed,
       isLaunchReadyUser,
@@ -218,7 +186,6 @@ function readSupabaseConfig() {
         return r;
       },
 
-      // Supports emailRedirectTo
       async signUp(email, password, options = {}) {
         return await client.auth.signUp({
           email,
@@ -244,9 +211,6 @@ function readSupabaseConfig() {
         return await client.auth.getUser();
       },
 
-      // Converts anon user into email/password user (same user_id)
-      // NOTE: This requires an existing anonymous user. Since we don't create
-      // anonymous users anymore, this will only work if the project already had one.
       async convertGuestToEmailPassword(email, password, options = {}) {
         const u = await currentUser();
         if (!u) return { data: null, error: new Error("No session to convert") };
@@ -261,8 +225,6 @@ function readSupabaseConfig() {
         return { data, error };
       },
 
-      // For pages that require a confirmed real user (start.html)
-      // ✅ FIX: default redirect is /login (not login.html)
       async requireLaunchReadyUser(redirectTo = "/login") {
         try {
           return await requireLaunchReadyUser(redirectTo);
@@ -272,7 +234,6 @@ function readSupabaseConfig() {
       },
 
       projects: {
-        // Project ops are now LAUNCH-READY ONLY
         async getActiveProjectId() {
           const userId = await requireLaunchReadyUserId();
           return localStorage.getItem(activeProjectKey(userId)) || "";
