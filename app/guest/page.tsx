@@ -8,6 +8,57 @@ function clean(v: any) {
 }
 
 export default function GuestPage() {
+  // ✅ FIX: handler must be in component scope (NOT inside useEffect),
+  // because JSX references it: onClick={handleEmailOutline}
+  async function handleEmailOutline() {
+    const leadEmailEl = document.getElementById("leadEmail") as HTMLInputElement | null;
+    const leadMsg = document.getElementById("leadMsg") as HTMLDivElement | null;
+
+    const setLeadMsg = (text: string) => {
+      if (leadMsg) leadMsg.textContent = text || "";
+    };
+
+    const email = (leadEmailEl?.value || "").trim();
+    if (!email) {
+      setLeadMsg("Enter your email.");
+      return;
+    }
+
+    const title = ((document.getElementById("titleOut") as HTMLElement | null)?.textContent || "").trim();
+    const purpose = ((document.getElementById("purposeOut") as HTMLElement | null)?.textContent || "").trim();
+
+    const outline = Array.from(document.querySelectorAll("#outlineOut li"))
+      .map((li) => ({ title: (li.textContent || "").trim() }))
+      .filter((x) => x.title);
+
+    if (!outline.length) {
+      setLeadMsg("Generate an outline first, then email it.");
+      return;
+    }
+
+    try {
+      setLeadMsg("Saving...");
+
+      // ✅ Keep your existing endpoint/logic (no guessing, no new API names)
+      const resp = await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, title, purpose, outline, source: "guest_outline" }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        setLeadMsg(`Could not save right now. (${(data as any)?.error || "error"})`);
+        return;
+      }
+
+      setLeadMsg((data as any).emailed ? "Sent. Check your email." : "Saved. Email sending will be enabled shortly.");
+    } catch {
+      setLeadMsg("Could not save right now. Please try again.");
+    }
+  }
+
   useEffect(() => {
     // Apply the premium background ONLY while this page is mounted
     document.documentElement.classList.add("guest-bg");
@@ -186,7 +237,7 @@ export default function GuestPage() {
         savePendingToLocalStorage({ title, purpose, outline });
 
         if (result) result.scrollIntoView({ behavior: "smooth" });
-      } catch (e) {
+      } catch {
         if (titleOut) titleOut.textContent = "Could not create outline";
         if (purposeOut) purposeOut.textContent = "Something went wrong. Please try again.";
         if (outlineOut) outlineOut.innerHTML = "<li>Error generating outline.</li>";
@@ -240,60 +291,11 @@ export default function GuestPage() {
       goToAuth("login");
     });
 
-    // ADDED: lead capture click handler (calls /api/lead; failure does NOT affect outline)
-    const leadEmailEl = document.getElementById("leadEmail") as HTMLInputElement | null;
-    const emailOutlineBtn = document.getElementById("emailOutlineBtn") as HTMLButtonElement | null;
-    const leadMsg = document.getElementById("leadMsg") as HTMLDivElement | null;
-
-    function setLeadMsg(text: string) {
-      if (leadMsg) leadMsg.textContent = text || "";
-    }
-
-    emailOutlineBtn?.addEventListener("click", async () => {
-      const email = (leadEmailEl?.value || "").trim();
-      if (!email) {
-        setLeadMsg("Enter your email.");
-        return;
-      }
-
-      const title = ((document.getElementById("titleOut") as HTMLElement | null)?.textContent || "").trim();
-      const purpose = (
-        (document.getElementById("purposeOut") as HTMLElement | null)?.textContent || ""
-      ).trim();
-
-      const outline = Array.from(document.querySelectorAll("#outlineOut li"))
-        .map((li) => ({ title: (li.textContent || "").trim() }))
-        .filter((x) => x.title);
-
-      if (!outline.length) {
-        setLeadMsg("Generate an outline first, then email it.");
-        return;
-      }
-
-      try {
-        setLeadMsg("Saving...");
-
-        const resp = await fetch("/api/lead", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, title, purpose, outline, source: "guest_outline" }),
-        });
-
-        const data = await resp.json().catch(() => ({}));
-
-        if (!resp.ok) {
-          setLeadMsg(`Could not save right now. (${(data as any)?.error || "error"})`);
-          return;
-        }
-
-        setLeadMsg((data as any).emailed ? "Sent. Check your email." : "Saved. Email sending will be enabled shortly.");
-      } catch (e) {
-        setLeadMsg("Could not save right now. Please try again.");
-      }
-    });
+    // ✅ IMPORTANT SURGICAL CHANGE:
+    // We REMOVED the old "emailOutlineBtn.addEventListener" block because the button
+    // now uses React onClick={handleEmailOutline}. No duplicate handlers, no scope issues.
 
     // Cleanup listeners is intentionally omitted here to preserve 1:1 behavior during migration.
-    // This page is a single mount in typical usage; we can tighten cleanup after parity is confirmed.
   }, []);
 
   return (
@@ -684,7 +686,7 @@ export default function GuestPage() {
                 autoComplete="email"
                 style={{ flex: 1, minWidth: 220 }}
               />
-              <button className="btn secondary" id="emailOutlineBtn" type="button">
+              <button className="btn secondary" id="emailOutlineBtn" type="button" onClick={handleEmailOutline}>
                 Email me my outline
               </button>
             </div>

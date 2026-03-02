@@ -22,10 +22,7 @@ function ok() {
 export async function POST(req: Request) {
   try {
     if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
-      return NextResponse.json(
-        { error: "missing_stripe_env" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "missing_stripe_env" }, { status: 500 });
     }
     if (!SUPABASE_URL) {
       return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
@@ -65,7 +62,12 @@ export async function POST(req: Request) {
 
     if (!paymentPaid) return ok();
 
-    const userId = (session.metadata?.user_id || "").toString().trim();
+    // ✅ Prefer Stripe-controlled binding (from create-checkout: client_reference_id = userId)
+    // ✅ Keep metadata fallback for older sessions (backward compatibility)
+    const userId =
+      (session.client_reference_id || "").toString().trim() ||
+      (session.metadata?.user_id || "").toString().trim();
+
     const plan = clean(session.metadata?.plan);
 
     if (!userId) return ok();
@@ -79,6 +81,8 @@ export async function POST(req: Request) {
       user_id: userId,
       plan,
       updated_at: new Date().toISOString(),
+      // Optional: keep a lightweight audit trail (safe if column exists)
+      // last_stripe_session_id: session.id,
     };
 
     // This one must succeed. If it fails, return 500 so Stripe retries.
@@ -99,8 +103,6 @@ export async function POST(req: Request) {
         .from("usable_limits")
         .upsert(payload, { onConflict: "user_id" });
 
-      // If table exists but write fails, still don’t fail the webhook.
-      // usage_limits is the source of truth.
       void up2;
     } catch {
       // ignore

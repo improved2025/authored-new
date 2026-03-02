@@ -22,7 +22,7 @@ function extractAccessToken(headers: Headers) {
   const m = auth.match(/Bearer\s+(.+)/i);
   if (m?.[1]) return m[1].trim();
 
-  // 2) Cookie fallback
+  // 2) Cookie fallback (legacy)
   const cookie = headers.get("cookie") || "";
   const sbAccess = cookie.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
   if (sbAccess?.[1]) {
@@ -50,8 +50,6 @@ async function getUserFromRequest(req: Request) {
 }
 
 function originFromReq(req: Request) {
-  // Prefer forwarded headers (Vercel/proxies), then fall back.
-  // Vercel commonly provides x-forwarded-proto and x-forwarded-host.
   const proto =
     req.headers.get("x-forwarded-proto") ||
     (req.headers.get("host")?.includes("localhost") ? "http" : "https");
@@ -61,7 +59,6 @@ function originFromReq(req: Request) {
     req.headers.get("host") ||
     "";
 
-  // If host is still missing, last resort to an env var (optional)
   const envOrigin =
     process.env.NEXT_PUBLIC_SITE_URL ||
     process.env.SITE_URL ||
@@ -105,7 +102,6 @@ async function handler(req: Request, planFromQuery?: string) {
   const stripe = new Stripe(STRIPE_SECRET_KEY);
   const origin = originFromReq(req);
 
-  // Safety: if origin is malformed, fail fast with actionable message
   if (!origin.startsWith("http")) {
     return NextResponse.json(
       { error: "invalid_origin", details: `Could not determine origin from request headers.` },
@@ -117,17 +113,17 @@ async function handler(req: Request, planFromQuery?: string) {
     mode: "payment",
     line_items: [{ price: priceId, quantity: 1 }],
 
-    // Keep your legacy behavior (API route handles post-payment activation)
-    success_url: `${origin}/api/stripe-success?session_id={CHECKOUT_SESSION_ID}`,
+    // ✅ Success is UX-only. Webhook is the single source of truth for entitlements.
+    // If you don't need the session_id on the client, you can remove it from the URL.
+    success_url: `${origin}/start?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/pricing?canceled=1`,
 
-    // Metadata is what your webhook + success route depends on
-    metadata: { user_id: userId, plan },
+    // ✅ Keep only what the webhook needs.
+    metadata: { plan },
 
-    // Helpful for tracing in Stripe dashboard
-    client_reference_id: `${userId}:${plan}`,
+    // ✅ Strong binding: webhook should prefer this for user id.
+    client_reference_id: userId,
 
-    // Optional but useful: prefill and attach email if available
     customer_email: user?.email || undefined,
   });
 
@@ -138,7 +134,6 @@ async function handler(req: Request, planFromQuery?: string) {
     );
   }
 
-  // Redirect browser to Stripe hosted checkout
   return NextResponse.redirect(session.url, 303);
 }
 
@@ -166,7 +161,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Keep legacy behavior: non-GET/POST => 405 JSON
 export async function PUT() {
   return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }

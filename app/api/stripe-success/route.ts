@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function originFromReq(req: Request) {
   const proto =
@@ -37,70 +34,47 @@ function redirectStart(req: Request, qs: Record<string, string>) {
 export async function GET(req: Request) {
   try {
     if (!STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: "missing_stripe_secret_key" }, { status: 500 });
-    }
-    if (!SUPABASE_URL) {
-      return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
-    }
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json({ error: "missing_service_role_key" }, { status: 500 });
+      // Still avoid stranding user on a JSON error page
+      return redirectStart(req, { stripe: "error", code: "missing_stripe_secret_key" });
     }
 
     const { searchParams } = new URL(req.url);
     const sessionId = (searchParams.get("session_id") || "").trim();
+
     if (!sessionId) {
-      return NextResponse.json({ error: "missing_session_id" }, { status: 400 });
+      return redirectStart(req, { stripe: "error", code: "missing_session_id" });
     }
 
     const stripe = new Stripe(STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     if (!session) {
-      // Don’t hard-fail; bounce user back.
-      return redirectStart(req, { upgraded: "0", error: "missing_session" });
+      return redirectStart(req, { stripe: "error", code: "missing_session" });
     }
 
+    // UX-only: never grant entitlements here.
+    // Webhook is the single source of truth for plan activation.
     const isPaid =
       session.payment_status === "paid" || session.status === "complete";
 
     if (!isPaid) {
-      // Stripe can lag; don’t show a scary error page.
-      // Let the user land on /start and we can show a “processing payment” message there later.
-      return redirectStart(req, { pending: "1" });
+      return redirectStart(req, { stripe: "pending" });
     }
 
-    const userId = (session.metadata?.user_id || "").toString().trim();
+    // Optional: pass helpful context for UI messaging only.
     const plan = (session.metadata?.plan || "").toString().trim().toLowerCase();
+    const userRef = (session.client_reference_id || "").toString().trim();
 
-    if (!userId) {
-      return redirectStart(req, { upgraded: "0", error: "missing_user_id_metadata" });
-    }
-    if (plan !== "project" && plan !== "lifetime") {
-      return redirectStart(req, { upgraded: "0", error: "invalid_plan_metadata" });
-    }
+    const qs: Record<string, string> = { stripe: "success" };
+    if (plan === "project" || plan === "lifetime") qs.plan = plan;
+    if (userRef) qs.user = userRef;
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false },
-    });
-
-    const up = await supabaseAdmin
-      .from("usage_limits")
-      .upsert(
-        { user_id: userId, plan, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" }
-      );
-
-    if (up.error) {
-      // Return 500 so you see it, but still don’t strand the user on a JSON error page
-      return redirectStart(req, { upgraded: "0", error: "entitlement_write_failed" });
-    }
-
-    return redirectStart(req, { upgraded: plan });
+    return redirectStart(req, qs);
   } catch (err: any) {
-    return NextResponse.json(
-      { error: "stripe_success_failed", details: String(err?.message || err) },
-      { status: 500 }
-    );
+    return redirectStart(req, {
+      stripe: "error",
+      code: "stripe_success_failed",
+    });
   }
 }
 

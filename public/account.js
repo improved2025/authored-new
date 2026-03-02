@@ -2,17 +2,51 @@
 // Shared auth + session helpers for all pages.
 // Requires: <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-const SUPABASE_URL = "https://siiivusryuotqmbcerqp.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpaWl2dXNyeXVvdHFtYmNlcnFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0ODc4NjIsImV4cCI6MjA4MjA2Mzg2Mn0.Sgx9Qy0t-8w6M2BeFyWRR3lCHcZkj_cLioJAq5XlNKc";
+/**
+ * Surgical config fix:
+ * - Prefer runtime-injected config: window.__APP_CONFIG__ or window.__AUTHORED_CONFIG__
+ * - Allow localhost fallback ONLY (to avoid breaking local dev)
+ * - In production, require injected values to prevent env drift.
+ */
+function readSupabaseConfig() {
+  const cfg = window.__APP_CONFIG__ || window.__AUTHORED_CONFIG__ || {};
+  const url =
+    (cfg.supabaseUrl || cfg.SUPABASE_URL || "").toString().trim();
+  const anonKey =
+    (cfg.supabaseAnonKey || cfg.SUPABASE_ANON_KEY || "").toString().trim();
+
+  // Localhost/dev fallback only (prevents breaking if you haven't injected config yet)
+  const isLocalhost =
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.hostname.endsWith(".local");
+
+  if (isLocalhost && (!url || !anonKey)) {
+    // ✅ Keep your previous values ONLY for localhost so dev doesn’t break.
+    return {
+      url: "https://siiivusryuotqmbcerqp.supabase.co",
+      anonKey:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpaWl2dXNyeXVvdHFtYmNlcnFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0ODc4NjIsImV4cCI6MjA4MjA2Mzg2Mn0.Sgx9Qy0t-8w6M2BeFyWRR3lCHcZkj_cLioJAq5XlNKc"
+    };
+  }
+
+  return { url, anonKey };
+}
 
 (function initAuthoredAccount() {
   try {
+    const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } =
+      readSupabaseConfig();
+
     if (!SUPABASE_URL || SUPABASE_URL.includes("PASTE_")) {
-      throw new Error("Missing SUPABASE_URL in account.js");
+      throw new Error(
+        "Missing SUPABASE_URL for account.js. Inject window.__APP_CONFIG__ = { supabaseUrl, supabaseAnonKey } before loading account.js"
+      );
     }
     if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes("PASTE_")) {
-      throw new Error("Missing SUPABASE_ANON_KEY in account.js");
+      throw new Error(
+        "Missing SUPABASE_ANON_KEY for account.js. Inject window.__APP_CONFIG__ = { supabaseUrl, supabaseAnonKey } before loading account.js"
+      );
     }
     if (!window.supabase || !window.supabase.createClient) {
       throw new Error(
