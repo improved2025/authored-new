@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -30,7 +31,6 @@ function getSupabase() {
 }
 
 function isRealUser(user: any) {
-  // You said you’re not enabling anonymous, but keep this guard anyway.
   return !!user && user.is_anonymous === false;
 }
 function isVerifiedUser(user: any) {
@@ -41,7 +41,6 @@ export default function SignupClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  // Support both old + new param names
   const next =
     sp.get("next") ||
     sp.get("returnTo") ||
@@ -62,7 +61,6 @@ export default function SignupClient() {
   const [resendBusy, setResendBusy] = useState(false);
 
   const emailRedirectTo = () => {
-    // Verify page will redirect back to `next`
     const base = `${window.location.origin}/verify`;
     const qs = `next=${encodeURIComponent(next)}`;
     return `${base}?${qs}`;
@@ -73,9 +71,6 @@ export default function SignupClient() {
   };
 
   useEffect(() => {
-    // If already logged in:
-    // - verified real user => send to next
-    // - unverified real user => keep here and show resend
     (async () => {
       try {
         const { data } = await supabase.auth.getSession();
@@ -125,8 +120,6 @@ export default function SignupClient() {
 
       if (error) throw error;
 
-      // In some configs Supabase returns a session right away (no email confirm).
-      // If it does, keep cookies synced for your API routes.
       if (data?.session) writeAuthCookies(data.session);
 
       setMsg("Confirm your email to finish signup.");
@@ -180,6 +173,20 @@ export default function SignupClient() {
   return (
     <>
       <main className="wrap">
+        <div className="brand">
+          <Link href="/start" aria-label="Go to start">
+            <span className="logoChip">
+              <Image
+                src="/assets/logo-authored.png"
+                alt="Authored"
+                width={180}
+                height={60}
+                priority
+              />
+            </span>
+          </Link>
+        </div>
+
         <h1>Create your account</h1>
         <p className="sub">Email + password. Your draft will carry over.</p>
 
@@ -245,6 +252,23 @@ export default function SignupClient() {
           margin: 80px auto;
           padding: 0 20px;
           text-align: center;
+        }
+
+        .brand{
+          display:flex;
+          justify-content:center;
+          margin-bottom: 16px;
+        }
+
+        .logoChip{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          padding: 10px 14px;
+          border-radius: 14px;
+          background: rgba(0,0,0,.65);
+          border: 1px solid rgba(255,255,255,.14);
+          backdrop-filter: blur(10px);
         }
 
         h1{

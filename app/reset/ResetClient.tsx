@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  return createClient(url, anon, { auth: { persistSession: true, autoRefreshToken: true } });
+}
 
-export default function LoginClient() {
-  const router = useRouter();
+export default function ResetClient() {
   const sp = useSearchParams();
+  const supabase = useMemo(() => getSupabase(), []);
 
   const next = useMemo(() => {
     const n = sp.get("next") || "/start";
@@ -20,81 +22,71 @@ export default function LoginClient() {
   }, [sp]);
 
   const [email, setEmail] = useState(sp.get("email") || "");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [kind, setKind] = useState<"" | "ok" | "err">("");
 
-  const onLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setMsg("");
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    if (error) {
-      setMsg(error.message);
-      setBusy(false);
-      return;
-    }
-
-    const user = data?.user || data?.session?.user;
-
-    if (!user?.email_confirmed_at) {
-      router.replace(
-        `/verify?next=${encodeURIComponent(next)}&email=${encodeURIComponent(
-          email.trim()
-        )}`
-      );
-      return;
-    }
-
-    window.location.replace(next);
+  const redirectTo = () => {
+    // After clicking email link, user lands here to set new password
+    const base = `${window.location.origin}/reset/confirm`;
+    const qs = `next=${encodeURIComponent(next)}`;
+    return `${base}?${qs}`;
   };
 
-  const signupHref = `/signup?next=${encodeURIComponent(next)}${
-    email ? `&email=${encodeURIComponent(email.trim())}` : ""
-  }`;
+  const onSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg("");
+    setKind("");
 
-  const resetHref = `/reset?next=${encodeURIComponent(next)}${
-    email ? `&email=${encodeURIComponent(email.trim())}` : ""
-  }`;
+    const em = email.trim();
+    if (!em) {
+      setMsg("Enter your email.");
+      setKind("err");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(em, {
+        redirectTo: redirectTo(),
+      });
+      if (error) throw error;
+
+      setMsg("Password reset email sent. Check your inbox.");
+      setKind("ok");
+    } catch (err: any) {
+      setMsg(err?.message || "Could not send reset email.");
+      setKind("err");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <main className="wrap">
-      <h1>Log in</h1>
-      <p className="sub">Welcome back. Pick up right where you left off.</p>
+      <h1>Reset password</h1>
+      <p className="sub">We’ll email you a link to set a new password.</p>
 
       <div className="card">
-        <form onSubmit={onLogin}>
+        <form onSubmit={onSend}>
           <label>Email</label>
           <input
             type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
           />
 
-          <label>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+          <button disabled={busy}>{busy ? "Sending..." : "Send reset link"}</button>
 
-          <button disabled={busy}>{busy ? "Logging in..." : "Log in"}</button>
-
-          {msg && <div className="msg">{msg}</div>}
+          {!!msg && <div className={`msg ${kind}`}>{msg}</div>}
 
           <div className="links">
-            <Link href={resetHref} className="link">
-              Forgot password?
+            <Link className="link" href={`/login?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email.trim())}` : ""}`}>
+              Back to login
             </Link>
-
-            <Link href={signupHref} className="link strong">
+            <Link className="link strong" href={`/signup?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email.trim())}` : ""}`}>
               Create an account
             </Link>
           </div>
@@ -110,12 +102,10 @@ export default function LoginClient() {
           position: relative;
           z-index: 5;
         }
-
         .sub {
           color: rgba(255, 255, 255, 0.78);
           margin: 0 0 16px;
         }
-
         .card {
           border-radius: 18px;
           padding: 22px;
@@ -124,7 +114,6 @@ export default function LoginClient() {
           backdrop-filter: blur(14px);
           text-align: left;
         }
-
         label {
           display: block;
           font-size: 13px;
@@ -132,7 +121,6 @@ export default function LoginClient() {
           color: rgba(255, 255, 255, 0.92);
           font-weight: 700;
         }
-
         input {
           width: 100%;
           padding: 12px;
@@ -143,7 +131,6 @@ export default function LoginClient() {
           color: white;
           box-sizing: border-box;
         }
-
         button {
           width: 100%;
           padding: 12px;
@@ -158,14 +145,18 @@ export default function LoginClient() {
           opacity: 0.7;
           cursor: not-allowed;
         }
-
         .msg {
           margin-top: 10px;
-          color: #ffb4b4;
           font-size: 13px;
           line-height: 1.4;
+          min-height: 18px;
         }
-
+        .msg.ok {
+          color: #bff0bf;
+        }
+        .msg.err {
+          color: #ffb4b4;
+        }
         .links {
           display: flex;
           justify-content: space-between;
@@ -175,7 +166,6 @@ export default function LoginClient() {
           font-size: 13px;
           flex-wrap: wrap;
         }
-
         .link {
           color: rgba(255, 255, 255, 0.84);
           text-decoration: none;
@@ -186,7 +176,6 @@ export default function LoginClient() {
           color: rgba(255, 255, 255, 0.95);
           border-bottom-color: rgba(255, 255, 255, 0.5);
         }
-
         .strong {
           font-weight: 800;
         }

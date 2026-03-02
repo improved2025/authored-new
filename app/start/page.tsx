@@ -902,7 +902,7 @@ export default function StartPage() {
 
       <div style={{ marginBottom: 24 }}>
         <a href="/" style={{ display: "inline-flex", alignItems: "center" }}>
-          <img src="/assets/logo-authored.png" alt="Authored" style={{ height: 40, width: "auto" }} />
+          <img src="/assets/logo-authored2.png" alt="Authored" style={{ height: 40, width: "auto" }} />
         </a>
       </div>
 
