@@ -24,6 +24,16 @@ function outlineToText(outline: any[]) {
     .join("\n");
 }
 
+// tiny helper for HTML safety
+function escapeHtml(s: string) {
+  return (s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export async function POST(req: Request) {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -65,7 +75,7 @@ export async function POST(req: Request) {
         source,
         title,
         purpose,
-        outline, // jsonb column per your screenshot
+        outline, // jsonb column
       })
       .select("id")
       .single();
@@ -77,10 +87,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Try email (best-effort)
+    // 2) Try email (best-effort, but RETURN REAL ERROR for debugging)
     let emailed = false;
+    let email_error: string | null = null;
 
-    if (RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
+      email_error = "missing_resend_api_key";
+    } else {
       try {
         const resend = new Resend(RESEND_API_KEY);
 
@@ -91,7 +104,11 @@ export async function POST(req: Request) {
           <div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
             <h2 style="margin:0 0 10px;">Here’s your outline</h2>
             <p style="margin:0 0 10px;"><strong>Title:</strong> ${escapeHtml(title)}</p>
-            ${purpose ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>` : ""}
+            ${
+              purpose
+                ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>`
+                : ""
+            }
             <pre style="background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px;font-size:13px;white-space:pre-wrap;">${escapeHtml(
               outlineText
             )}</pre>
@@ -101,47 +118,41 @@ export async function POST(req: Request) {
           </div>
         `.trim();
 
-        const sent = await resend.emails.send({
+        const sent: any = await resend.emails.send({
           from: RESEND_FROM,
           to: email,
           subject,
           html,
         });
 
-        // Resend usually returns an id when successful
-        if ((sent as any)?.data?.id || (sent as any)?.id) {
+        // Surface Resend error if present
+        if (sent?.error) {
+          email_error = sent.error?.message || "resend_error";
+        } else if (sent?.data?.id || sent?.id) {
           emailed = true;
+        } else {
+          email_error = "resend_unknown_response";
         }
 
         // Optional: store emailed status
         if (emailed) {
-          await supabase
-            .from("leads")
-            .update({ emailed: true })
-            .eq("id", insert.data.id);
+          await supabase.from("leads").update({ emailed: true }).eq("id", insert.data.id);
         }
-      } catch {
-        // keep emailed=false; lead already saved
+      } catch (e: any) {
+        email_error = e?.message || String(e);
       }
     }
 
-    return NextResponse.json({ ok: true, emailed }, { status: 200 });
+    return NextResponse.json(
+      { ok: true, emailed, email_error, lead_id: insert.data.id },
+      { status: 200 }
+    );
   } catch (err: any) {
     return NextResponse.json(
       { error: "server_error", details: String(err?.message || err) },
       { status: 500 }
     );
   }
-}
-
-// tiny helper for HTML safety
-function escapeHtml(s: string) {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 export async function GET() {
