@@ -26,7 +26,7 @@ function outlineToText(outline: any[]) {
 
 // tiny helper for HTML safety
 function escapeHtml(s: string) {
-  return (s || "")
+  return s
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -41,12 +41,9 @@ export async function POST(req: Request) {
     const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
     const RESEND_FROM = process.env.RESEND_FROM || "Authored <onboarding@resend.dev>";
 
-    if (!SUPABASE_URL) {
-      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
-    }
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL) return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
+    if (!SUPABASE_SERVICE_ROLE_KEY)
       return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
-    }
 
     const body = (await req.json().catch(() => ({}))) as any;
 
@@ -56,12 +53,8 @@ export async function POST(req: Request) {
     const source = clean(body.source) || "guest_outline";
     const outline = Array.isArray(body.outline) ? body.outline : [];
 
-    if (!email || !isValidEmail(email)) {
-      return NextResponse.json({ error: "invalid_email" }, { status: 400 });
-    }
-    if (!outline.length) {
-      return NextResponse.json({ error: "missing_outline" }, { status: 400 });
-    }
+    if (!email || !isValidEmail(email)) return NextResponse.json({ error: "invalid_email" }, { status: 400 });
+    if (!outline.length) return NextResponse.json({ error: "missing_outline" }, { status: 400 });
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
@@ -70,26 +63,18 @@ export async function POST(req: Request) {
     // 1) Save lead (always)
     const insert = await supabase
       .from("leads")
-      .insert({
-        email,
-        source,
-        title,
-        purpose,
-        outline, // jsonb column
-      })
+      .insert({ email, source, title, purpose, outline })
       .select("id")
       .single();
 
     if (insert.error) {
-      return NextResponse.json(
-        { error: "db_insert_failed", details: insert.error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "db_insert_failed", details: insert.error.message }, { status: 500 });
     }
 
-    // 2) Try email (best-effort, but RETURN REAL ERROR for debugging)
+    // 2) Try email (best-effort) — BUT report errors
     let emailed = false;
     let email_error: string | null = null;
+    let resend_id: string | null = null;
 
     if (!RESEND_API_KEY) {
       email_error = "missing_resend_api_key";
@@ -98,17 +83,12 @@ export async function POST(req: Request) {
         const resend = new Resend(RESEND_API_KEY);
 
         const outlineText = outlineToText(outline);
-
         const subject = `Your Authored outline: ${title}`;
         const html = `
           <div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
             <h2 style="margin:0 0 10px;">Here’s your outline</h2>
             <p style="margin:0 0 10px;"><strong>Title:</strong> ${escapeHtml(title)}</p>
-            ${
-              purpose
-                ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>`
-                : ""
-            }
+            ${purpose ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>` : ""}
             <pre style="background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px;font-size:13px;white-space:pre-wrap;">${escapeHtml(
               outlineText
             )}</pre>
@@ -118,40 +98,46 @@ export async function POST(req: Request) {
           </div>
         `.trim();
 
-        const sent: any = await resend.emails.send({
+        const sent = await resend.emails.send({
           from: RESEND_FROM,
-          to: email,
+          to: [email], // force array to avoid edge cases
           subject,
           html,
         });
 
-        // Surface Resend error if present
-        if (sent?.error) {
-          email_error = sent.error?.message || "resend_error";
-        } else if (sent?.data?.id || sent?.id) {
+        const id = (sent as any)?.data?.id || (sent as any)?.id || null;
+        if (id) {
           emailed = true;
+          resend_id = String(id);
         } else {
-          email_error = "resend_unknown_response";
-        }
-
-        // Optional: store emailed status
-        if (emailed) {
-          await supabase.from("leads").update({ emailed: true }).eq("id", insert.data.id);
+          email_error = JSON.stringify(sent);
         }
       } catch (e: any) {
-        email_error = e?.message || String(e);
+        email_error = String(e?.message || e);
+        console.error("RESEND_SEND_FAILED", { email, from: RESEND_FROM, error: email_error });
       }
     }
 
+    // Optional: store send status
+    try {
+      await supabase
+        .from("leads")
+        .update({ emailed, email_error, resend_id })
+        .eq("id", insert.data.id);
+    } catch {}
+
     return NextResponse.json(
-      { ok: true, emailed, email_error, lead_id: insert.data.id },
+      {
+        ok: true,
+        emailed,
+        email_error,
+        resend_id,
+        from: RESEND_FROM,
+      },
       { status: 200 }
     );
   } catch (err: any) {
-    return NextResponse.json(
-      { error: "server_error", details: String(err?.message || err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "server_error", details: String(err?.message || err) }, { status: 500 });
   }
 }
 
