@@ -1,120 +1,149 @@
+// app/api/lead/route.ts
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
-export async function POST(request: Request) {
+export const runtime = "nodejs";
+
+function clean(v: any) {
+  return (v ?? "").toString().trim();
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function outlineToText(outline: any[]) {
+  const items = Array.isArray(outline) ? outline : [];
+  return items
+    .map((x, i) => {
+      const t = clean(x?.title);
+      return t ? `${i + 1}. ${t}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function POST(req: Request) {
   try {
-    const body = await request.json().catch(() => ({} as any));
-    const { email, title, purpose, outline, source } = body || {};
+    const SUPABASE_URL = process.env.SUPABASE_URL || "";
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+    const RESEND_FROM = process.env.RESEND_FROM || "Authored <onboarding@resend.dev>";
 
-    if (!email || typeof email !== "string" || !email.includes("@")) {
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+    }
+
+    const body = (await req.json().catch(() => ({}))) as any;
+
+    const email = clean(body.email).toLowerCase();
+    const title = clean(body.title) || "Your outline";
+    const purpose = clean(body.purpose);
+    const source = clean(body.source) || "guest_outline";
+    const outline = Array.isArray(body.outline) ? body.outline : [];
+
+    if (!email || !isValidEmail(email)) {
       return NextResponse.json({ error: "invalid_email" }, { status: 400 });
     }
-    if (!Array.isArray(outline) || outline.length < 1) {
+    if (!outline.length) {
       return NextResponse.json({ error: "missing_outline" }, { status: 400 });
     }
 
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json({ error: "server_not_configured" }, { status: 500 });
-    }
-
-    const userAgent = (request.headers.get("user-agent") || "").toString().slice(0, 300);
-    const ip =
-      (request.headers.get("x-forwarded-for") || "").toString().split(",")[0].trim().slice(0, 80);
-
-    // Save lead to Supabase (always do this first)
-    const insertPayload = {
-      email: email.trim().toLowerCase(),
-      source: (source || "guest_outline").toString(),
-      title: (title || "").toString().slice(0, 200),
-      purpose: (purpose || "").toString().slice(0, 2000),
-      outline, // json array
-      user_agent: userAgent,
-      ip,
-    };
-
-    const supaResp = await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify(insertPayload),
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
     });
 
-    if (!supaResp.ok) {
-      const txt = await supaResp.text().catch(() => "");
+    // 1) Save lead (always)
+    const insert = await supabase
+      .from("leads")
+      .insert({
+        email,
+        source,
+        title,
+        purpose,
+        outline, // jsonb column per your screenshot
+      })
+      .select("id")
+      .single();
+
+    if (insert.error) {
       return NextResponse.json(
-        { error: "lead_save_failed", details: txt.slice(0, 300) },
+        { error: "db_insert_failed", details: insert.error.message },
         { status: 500 }
       );
     }
 
-    // OPTIONAL: send email (non-fatal)
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const FROM_EMAIL = process.env.FROM_EMAIL; // e.g. "Authored <support@myauthored.com>"
-    const APP_URL = process.env.APP_URL || ""; // e.g. https://myauthored.com
-
+    // 2) Try email (best-effort)
     let emailed = false;
 
-    if (RESEND_API_KEY && FROM_EMAIL) {
-      const subject = "Your Authored outline is saved";
+    if (RESEND_API_KEY) {
+      try {
+        const resend = new Resend(RESEND_API_KEY);
 
-      const outlineLines = outline
-        .map((x: any, i: number) => {
-          const t = typeof x === "string" ? x : x?.title || `Chapter ${i + 1}`;
-          return `${i + 1}. ${String(t)}`;
-        })
-        .join("\n");
+        const outlineText = outlineToText(outline);
 
-      // Old app used /start.html. In Next, your equivalent is /start.
-      // If APP_URL is set, we keep the same intent but point to /start.
-      const returnLink = APP_URL ? `${APP_URL.replace(/\/$/, "")}/start` : "/start";
+        const subject = `Your Authored outline: ${title}`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
+            <h2 style="margin:0 0 10px;">Here’s your outline</h2>
+            <p style="margin:0 0 10px;"><strong>Title:</strong> ${escapeHtml(title)}</p>
+            ${purpose ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>` : ""}
+            <pre style="background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px;font-size:13px;white-space:pre-wrap;">${escapeHtml(
+              outlineText
+            )}</pre>
+            <p style="margin:14px 0 0; font-size:12px; color:#555;">
+              You can create a free account to expand chapters and save your project.
+            </p>
+          </div>
+        `.trim();
 
-      const textBody = `You started something important.
-
-Here’s the outline you created with Authored. Save this email so you can come back to it anytime.
-
-Title: ${title || "Untitled"}
-
-Purpose:
-${purpose || ""}
-
-Outline:
-${outlineLines}
-
-Continue writing here:
-${returnLink}
-
-— Authored`;
-
-      const resendResp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-        },
-        body: JSON.stringify({
-          from: FROM_EMAIL,
+        const sent = await resend.emails.send({
+          from: RESEND_FROM,
           to: email,
           subject,
-          text: textBody,
-        }),
-      });
+          html,
+        });
 
-      emailed = resendResp.ok;
+        // Resend usually returns an id when successful
+        if ((sent as any)?.data?.id || (sent as any)?.id) {
+          emailed = true;
+        }
+
+        // Optional: store emailed status
+        if (emailed) {
+          await supabase
+            .from("leads")
+            .update({ emailed: true })
+            .eq("id", insert.data.id);
+        }
+      } catch {
+        // keep emailed=false; lead already saved
+      }
     }
 
-    return NextResponse.json({ ok: true, saved: true, emailed }, { status: 200 });
-  } catch {
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+    return NextResponse.json({ ok: true, emailed }, { status: 200 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "server_error", details: String(err?.message || err) },
+      { status: 500 }
+    );
   }
 }
 
-// Match your old behavior: any non-POST should be method_not_allowed
+// tiny helper for HTML safety
+function escapeHtml(s: string) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export async function GET() {
   return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }
