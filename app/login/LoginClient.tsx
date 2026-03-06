@@ -54,47 +54,55 @@ export default function LoginClient() {
     window.location.replace(next);
   };
 
-  const signupHref = `/signup?next=${encodeURIComponent(next)}${
-    email ? `&email=${encodeURIComponent(email.trim())}` : ""
-  }`;
-
-  const resetHref = `/reset?next=${encodeURIComponent(next)}${
-    email ? `&email=${encodeURIComponent(email.trim())}` : ""
-  }`;
-
   return (
     <main className="wrap">
+      <div className="brand">
+        <Link href="/" className="brandLink" aria-label="Authored home">
+          <img src="/assets/logo-authored.png" alt="Authored" className="brandLogo" />
+        </Link>
+      </div>
+
       <h1>Log in</h1>
       <p className="sub">Welcome back. Pick up right where you left off.</p>
 
       <div className="card">
         <form onSubmit={onLogin}>
-          <label>Email</label>
+          <label htmlFor="email">Email</label>
           <input
+            id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
+            placeholder="you@example.com"
           />
 
-          <label>Password</label>
+          <label htmlFor="password">Password</label>
           <input
+            id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            placeholder="••••••••"
           />
 
-          <button disabled={busy}>{busy ? "Logging in..." : "Log in"}</button>
+          <button disabled={busy}>
+            {busy ? "Logging in..." : "Log in"}
+          </button>
 
           {msg && <div className="msg">{msg}</div>}
 
-          <div className="links">
-            <Link href={resetHref} className="link">
+          <div className="row">
+            <Link href={`/reset?email=${encodeURIComponent(email.trim())}`}>
               Forgot password?
             </Link>
 
-            <Link href={signupHref} className="link strong">
+            <Link
+              href={`/signup?next=${encodeURIComponent(next)}${
+                email ? `&email=${encodeURIComponent(email)}` : ""
+              }`}
+            >
               Create an account
             </Link>
           </div>
@@ -111,18 +119,54 @@ export default function LoginClient() {
           z-index: 5;
         }
 
+        .brand {
+          display: flex;
+          justify-content: center;
+          margin: 0 0 18px;
+        }
+
+        .brandLink {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px 22px;
+          border-radius: 24px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(10, 12, 18, 0.55);
+          backdrop-filter: blur(14px);
+          box-shadow: 0 16px 50px rgba(0, 0, 0, 0.28);
+        }
+
+        .brandLogo {
+          display: block;
+          height: 54px;
+          width: auto;
+        }
+
+        h1 {
+          font-size: 40px;
+          margin: 0 0 10px;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+          text-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+        }
+
         .sub {
-          color: rgba(255, 255, 255, 0.78);
-          margin: 0 0 16px;
+          color: rgba(255, 255, 255, 0.82);
+          margin: 0 0 22px;
+          line-height: 1.5;
+          text-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+          font-size: 14px;
         }
 
         .card {
-          border-radius: 18px;
+          border-radius: 22px;
           padding: 22px;
           background: rgba(15, 18, 24, 0.55);
           border: 1px solid rgba(255, 255, 255, 0.14);
           backdrop-filter: blur(14px);
           text-align: left;
+          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.32);
         }
 
         label {
@@ -144,51 +188,97 @@ export default function LoginClient() {
           box-sizing: border-box;
         }
 
+        input::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        input:focus {
+          outline: none;
+          border-color: rgba(255, 255, 255, 0.32);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
         button {
           width: 100%;
           padding: 12px;
           border-radius: 12px;
           font-weight: 900;
+          font-size: 15px;
           background: white;
           color: black;
           border: none;
           cursor: pointer;
+          margin-top: 4px;
         }
+
         button:disabled {
-          opacity: 0.7;
+          opacity: 0.6;
           cursor: not-allowed;
         }
 
         .msg {
           margin-top: 10px;
           color: #ffb4b4;
+          min-height: 18px;
+          line-height: 1.45;
           font-size: 13px;
-          line-height: 1.4;
         }
 
-        .links {
+        .row {
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 12px;
-          margin-top: 14px;
-          font-size: 13px;
+          margin-top: 16px;
           flex-wrap: wrap;
         }
 
-        .link {
-          color: rgba(255, 255, 255, 0.84);
+        .row a {
+          color: rgba(255, 255, 255, 0.9);
           text-decoration: none;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.24);
           padding-bottom: 2px;
+          font-size: 13px;
         }
-        .link:hover {
-          color: rgba(255, 255, 255, 0.95);
+
+        .row a:hover {
           border-bottom-color: rgba(255, 255, 255, 0.5);
         }
 
-        .strong {
-          font-weight: 800;
+        @media (max-width: 640px) {
+          .wrap {
+            margin: 26px 16px;
+            padding: 0;
+          }
+
+          .brand {
+            margin-bottom: 16px;
+          }
+
+          .brandLink {
+            width: auto;
+            max-width: 100%;
+            padding: 14px 18px;
+            border-radius: 22px;
+          }
+
+          .brandLogo {
+            height: 44px;
+            max-width: 100%;
+          }
+
+          h1 {
+            font-size: 32px;
+          }
+
+          .card {
+            padding: 18px;
+            border-radius: 20px;
+          }
+
+          .row {
+            justify-content: space-between;
+          }
         }
       `}</style>
     </main>
