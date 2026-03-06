@@ -53,7 +53,13 @@ export default function GuestPage() {
         return;
       }
 
-      setLeadMsg((data as any).emailed ? "Sent. Check your email." : "Saved. Email sending will be enabled shortly.");
+      if ((data as any).emailed) {
+        setLeadMsg("Sent. Check your email.");
+      } else if ((data as any).email_error) {
+        setLeadMsg(`Saved, but email did not send yet. (${(data as any).email_error})`);
+      } else {
+        setLeadMsg("Saved. Email sending will be enabled shortly.");
+      }
     } catch {
       setLeadMsg("Could not save right now. Please try again.");
     }
@@ -308,6 +314,12 @@ export default function GuestPage() {
           min-height: 100%;
         }
 
+        html.guest-bg,
+        body.guest-body {
+          max-width: 100%;
+          overflow-x: hidden;
+        }
+
         /* Full-screen photo behind everything */
         html.guest-bg::before {
           content: "";
@@ -330,22 +342,23 @@ export default function GuestPage() {
           pointer-events: none;
         }
 
-        /* Turn the body into a "card" sitting on top of the background */
+        /* Turn the body into a readable dark-glass card */
         body.guest-body {
           font-family: Arial, sans-serif;
           margin: 48px;
           max-width: 900px;
-          background: rgba(255, 255, 255, 0.98);
+          background: linear-gradient(180deg, rgba(10, 12, 16, 0.78), rgba(10, 12, 16, 0.66));
+          border: 1px solid rgba(255, 255, 255, 0.12);
           border-radius: 18px;
           padding: 22px;
           box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
-          backdrop-filter: blur(6px);
+          backdrop-filter: blur(10px);
         }
 
         @media (max-width: 640px) {
           body.guest-body {
-            margin: 24px 20px;
-            padding: 18px;
+            margin: 22px 16px;
+            padding: 16px;
             border-radius: 16px;
           }
 
@@ -365,6 +378,7 @@ export default function GuestPage() {
           display: inline-flex;
           align-items: center;
           text-decoration: none;
+          max-width: 100%;
         }
         .logo-wrap img {
           height: 36px;
@@ -372,6 +386,9 @@ export default function GuestPage() {
           display: block;
         }
         @media (max-width: 640px) {
+          .site-header {
+            margin-bottom: 18px;
+          }
           .logo-wrap img {
             height: 32px;
           }
@@ -379,32 +396,48 @@ export default function GuestPage() {
 
         h1 {
           margin: 0 0 8px;
-          color: #111;
+          color: #f5f7fb;
+          text-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+          line-height: 1.15;
+          letter-spacing: -0.02em;
+          overflow-wrap: anywhere;
+        }
+        h2,
+        h3 {
+          color: #f5f7fb;
+          line-height: 1.2;
+          overflow-wrap: anywhere;
         }
         p {
-          color: #222;
+          color: rgba(245, 247, 251, 0.9);
           line-height: 1.5;
+          overflow-wrap: anywhere;
         }
         label {
           display: block;
           font-weight: 700;
           margin-top: 14px;
-          color: #111;
+          color: #f5f7fb;
+          text-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+          overflow-wrap: anywhere;
         }
         input[type="text"],
         input[type="email"],
         textarea,
         select {
           width: 100%;
-          padding: 10px;
-          border: 1px solid #ccc;
-          border-radius: 6px;
-          font-size: 14px;
-          background: #fff;
+          max-width: 100%;
+          padding: 12px 14px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 12px;
+          font-size: 15px;
+          background: rgba(255, 255, 255, 0.96);
           color: #111;
+          box-sizing: border-box;
         }
         textarea {
-          min-height: 80px;
+          min-height: 92px;
+          resize: vertical;
         }
         .row {
           display: flex;
@@ -414,62 +447,76 @@ export default function GuestPage() {
           margin-top: 12px;
         }
         .btn {
-          padding: 10px 14px;
-          border: 1px solid #111;
-          background: #111;
+          padding: 11px 14px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.06);
           color: #fff;
-          border-radius: 8px;
+          border-radius: 10px;
           cursor: pointer;
           font-weight: 700;
+          text-decoration: none;
+          min-height: 44px;
         }
         .btn.secondary {
-          background: #fff;
+          background: rgba(255, 255, 255, 0.96);
           color: #111;
+          border-color: rgba(255, 255, 255, 0.16);
         }
         .btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
         .muted {
-          color: #444 !important;
+          color: rgba(245, 247, 251, 0.76) !important;
           font-size: 13px;
         }
         hr {
           margin: 18px 0;
           border: none;
-          border-top: 1px solid #eee;
+          border-top: 1px solid rgba(255, 255, 255, 0.18);
         }
         .notice {
           background: #fff7d6;
           border: 1px solid #f2d27a;
           padding: 12px 14px;
-          border-radius: 10px;
+          border-radius: 14px;
           margin: 14px 0 18px;
           color: #5a4600;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+        }
+        .notice .muted {
+          color: rgba(90, 70, 0, 0.88) !important;
         }
         #result {
           display: none;
           margin-top: 18px;
         }
         .card {
-          border: 1px solid #e6e6e6;
-          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 16px;
           padding: 16px;
-          background: #fff;
+          background: rgba(255, 255, 255, 0.06);
+          backdrop-filter: blur(8px);
         }
         .pill {
           display: inline-block;
           padding: 4px 10px;
           border-radius: 999px;
-          border: 1px solid #ddd;
+          border: 1px solid rgba(255, 255, 255, 0.14);
           font-size: 12px;
-          color: #333;
+          color: rgba(245, 247, 251, 0.9);
           margin-right: 8px;
           margin-bottom: 6px;
+          background: rgba(255, 255, 255, 0.05);
         }
         ol,
         ul {
           padding-left: 18px;
+        }
+        li {
+          color: rgba(245, 247, 251, 0.92);
+          line-height: 1.5;
+          overflow-wrap: anywhere;
         }
         .actions {
           display: flex;
@@ -479,12 +526,15 @@ export default function GuestPage() {
         }
         pre {
           white-space: pre-wrap;
-          background: #fafafa;
-          border: 1px solid #eee;
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid rgba(255, 255, 255, 0.16);
           padding: 12px;
-          border-radius: 10px;
+          border-radius: 12px;
           font-size: 13px;
           line-height: 1.45;
+          color: #111;
+          max-width: 100%;
+          overflow-x: auto;
         }
 
         /* Genre buttons */
@@ -493,12 +543,12 @@ export default function GuestPage() {
         }
         .quickstart-note {
           font-size: 13px;
-          color: #333 !important;
+          color: rgba(245, 247, 251, 0.82) !important;
           margin-bottom: 8px;
         }
         .quickstart-sub {
           font-size: 12px;
-          color: #555 !important;
+          color: rgba(245, 247, 251, 0.68) !important;
           margin-top: 8px;
         }
         .genre-row {
@@ -508,13 +558,14 @@ export default function GuestPage() {
         }
         .genre-btn {
           appearance: none;
-          border: 1px solid #cfcfcf;
-          background: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.96);
           border-radius: 999px;
-          padding: 8px 12px;
+          padding: 9px 14px;
           font-size: 13px;
           cursor: pointer;
           color: #111;
+          min-height: 42px;
         }
         .genre-btn:hover {
           background: #f6f6f6;
@@ -528,6 +579,71 @@ export default function GuestPage() {
         input::placeholder,
         textarea::placeholder {
           color: #777;
+        }
+
+        @media (max-width: 640px) {
+          h1 {
+            font-size: 31px;
+            line-height: 1.08;
+            margin-bottom: 10px;
+          }
+          h2 {
+            font-size: 24px;
+            line-height: 1.12;
+          }
+          h3 {
+            font-size: 20px;
+            line-height: 1.15;
+          }
+          p,
+          label,
+          .muted,
+          .quickstart-note,
+          .quickstart-sub {
+            max-width: 100%;
+          }
+          .row {
+            gap: 10px;
+          }
+          .row > div[style] {
+            min-width: 0 !important;
+            width: 100%;
+          }
+          .row > div[style*="display: flex"] {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch !important;
+          }
+          .row > div[style*="display: flex"] > * {
+            width: 100%;
+          }
+          .actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .actions .btn,
+          .actions button,
+          .actions a {
+            width: 100%;
+            text-align: center;
+          }
+          #leadEmail {
+            min-width: 0 !important;
+          }
+          .genre-row {
+            gap: 8px;
+          }
+          .genre-btn {
+            padding: 9px 14px;
+            font-size: 12.5px;
+          }
+          .card {
+            padding: 14px;
+          }
+          .notice {
+            padding: 12px;
+            border-radius: 12px;
+          }
         }
       `}</style>
 
@@ -618,7 +734,7 @@ export default function GuestPage() {
           <button className="btn" id="beginBtn" type="button">
             Let’s shape a starting point
           </button>
-          <Link href="/" style={{ alignSelf: "center" }}>
+          <Link href="/" style={{ alignSelf: "center", color: "rgba(245,247,251,.86)" }}>
             Back to home
           </Link>
         </div>
