@@ -34,11 +34,10 @@ export default function PricingPage() {
   const [token, setToken] = useState<string | null>(null);
   const [paypalReady, setPaypalReady] = useState(false);
 
-  const renderedRef = useRef(false); // prevents double-render of PayPal buttons
+  const renderedRef = useRef(false);
 
   const warn = (msg: string) => setWarnMsg(msg || "");
 
-  // --- Auth (keep token updated, not just once) ---
   useEffect(() => {
     let alive = true;
 
@@ -48,11 +47,6 @@ export default function PricingPage() {
         if (error) throw error;
 
         const t = data?.session?.access_token || null;
-        if (!t) {
-          router.replace(`/login?next=${encodeURIComponent("/pricing")}`);
-          return;
-        }
-
         if (alive) setToken(t);
       } catch (e: any) {
         warn(e?.message || "Auth error. Please refresh.");
@@ -63,10 +57,6 @@ export default function PricingPage() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       const t = session?.access_token || null;
-      if (!t) {
-        router.replace(`/login?next=${encodeURIComponent("/pricing")}`);
-        return;
-      }
       setToken(t);
     });
 
@@ -74,9 +64,8 @@ export default function PricingPage() {
       alive = false;
       sub?.subscription?.unsubscribe();
     };
-  }, [router]);
+  }, []);
 
-  // --- Load PayPal SDK once ---
   const paypalSdkPromise = useMemo(() => {
     let p: Promise<boolean> | null = null;
 
@@ -90,7 +79,6 @@ export default function PricingPage() {
       }
 
       p = new Promise((resolve) => {
-        // already loaded
         if (window.paypal?.Buttons) return resolve(true);
 
         const existing = document.querySelector('script[data-paypal-sdk="1"]') as HTMLScriptElement | null;
@@ -122,10 +110,9 @@ export default function PricingPage() {
     return true;
   }
 
-  // --- Render PayPal buttons (Project + Lifetime) ---
   useEffect(() => {
     if (!token) return;
-    if (renderedRef.current) return; // don’t render twice
+    if (renderedRef.current) return;
 
     let cancelled = false;
 
@@ -146,8 +133,6 @@ export default function PricingPage() {
 
       setPaypalReady(true);
 
-      // Render once per mount. Buttons will still use the latest token via closure
-      // because we pass token explicitly here.
       await renderPayPal("paypalProject", "project", token);
       await renderPayPal("paypalLifetime", "lifetime", token);
 
@@ -164,7 +149,6 @@ export default function PricingPage() {
     const host = document.getElementById(containerId);
     if (!host) return;
 
-    // prevent double-render on fast refresh / dev re-renders
     host.innerHTML = "";
 
     if (!window.paypal?.Buttons) {
@@ -230,15 +214,55 @@ export default function PricingPage() {
   return (
     <main className="wrap">
       <div className="inner">
-        <h1>Upgrade Authored</h1>
+        <div className="topbar">
+          <Link href="/" className="toplink">
+            Home
+          </Link>
+          <Link href="/pricing" className="toplink active">
+            Pricing
+          </Link>
+          <Link href="/login" className="toplink">
+            Log in
+          </Link>
+          <Link href="/signup" className="toplink primary">
+            Start writing
+          </Link>
+        </div>
+
+        <h1>Choose your Authored plan</h1>
         <p className="muted">
-          Pick a plan. Pay by card (Stripe) or PayPal. Your account unlocks instantly after payment.
+          Start free. Upgrade when you’re ready to expand chapters, keep your voice, and finish the manuscript.
         </p>
 
         {warnMsg ? <div className="warn">{warnMsg}</div> : null}
 
         <div className="grid">
+          <div className="card freeCard">
+            <div className="pill">Start here</div>
+            <h2>Free</h2>
+            <div className="mutedSm">Try the workflow before you pay</div>
+            <div className="price">$0</div>
+            <ul>
+              <li>Generate outline</li>
+              <li>Try the guest flow</li>
+              <li>Limited titles, intro, and chapter expansion</li>
+              <li>Best for testing the workflow</li>
+            </ul>
+
+            <hr className="divider" />
+
+            <div className="row">
+              <Link className="btn" href="/guest">
+                Try free
+              </Link>
+              <Link className="btn secondary" href="/signup">
+                Create free account
+              </Link>
+            </div>
+          </div>
+
           <div className="card">
+            <div className="pill">Best for one book</div>
             <h2>Project plan</h2>
             <div className="mutedSm">One project, one user</div>
             <div className="price">$49</div>
@@ -247,6 +271,7 @@ export default function PricingPage() {
               <li>Regenerate drafts</li>
               <li>DOCX export</li>
               <li>Voice + tone controls</li>
+              <li>Best for one serious manuscript</li>
             </ul>
 
             <hr className="divider" />
@@ -260,6 +285,10 @@ export default function PricingPage() {
                 type="button"
                 disabled={!token || busyPlan === "project"}
                 onClick={() => {
+                  if (!token) {
+                    router.push(`/login?next=${encodeURIComponent("/pricing")}`);
+                    return;
+                  }
                   setBusyPlan("project");
                   goStripe("project");
                 }}
@@ -274,14 +303,17 @@ export default function PricingPage() {
             <div className="paypalBox" id="paypalProject" />
           </div>
 
-          <div className="card">
+          <div className="card featured">
+            <div className="pill accent">Best value</div>
             <h2>Lifetime</h2>
             <div className="mutedSm">All features, one user</div>
             <div className="price">$149</div>
             <ul>
               <li>Unlimited projects</li>
               <li>More expansions</li>
+              <li>No project restart friction</li>
               <li>Priority features as Authored grows</li>
+              <li>Best long-term option</li>
             </ul>
 
             <hr className="divider" />
@@ -295,6 +327,10 @@ export default function PricingPage() {
                 type="button"
                 disabled={!token || busyPlan === "lifetime"}
                 onClick={() => {
+                  if (!token) {
+                    router.push(`/login?next=${encodeURIComponent("/pricing")}`);
+                    return;
+                  }
                   setBusyPlan("lifetime");
                   goStripe("lifetime");
                 }}
@@ -310,7 +346,7 @@ export default function PricingPage() {
           </div>
         </div>
 
-        <div className="row" style={{ marginTop: 18 }}>
+        <div className="row bottomRow" style={{ marginTop: 18 }}>
           <Link className="btn secondary" href="/start">
             Back to writing
           </Link>
@@ -325,6 +361,12 @@ export default function PricingPage() {
         {PAYPAL_CLIENT_ID && token && !paypalReady ? (
           <p className="mutedSm" style={{ marginTop: 10 }}>
             Loading PayPal…
+          </p>
+        ) : null}
+
+        {!token ? (
+          <p className="mutedSm" style={{ marginTop: 10 }}>
+            Log in to purchase Project or Lifetime.
           </p>
         ) : null}
       </div>
@@ -343,7 +385,6 @@ export default function PricingPage() {
           background: #0b0d12;
         }
 
-        /* Full-page photo background */
         :global(body)::before {
           content: "";
           position: fixed;
@@ -354,7 +395,6 @@ export default function PricingPage() {
           filter: saturate(1.05) contrast(1.05);
         }
 
-        /* Dark overlay for readability */
         :global(body)::after {
           content: "";
           position: fixed;
@@ -366,13 +406,46 @@ export default function PricingPage() {
         }
 
         .wrap {
-          max-width: 900px;
+          max-width: 1180px;
           margin: 60px auto;
           padding: 0 20px;
         }
 
         .inner {
           width: 100%;
+        }
+
+        .topbar {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+
+        .toplink {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 10px 14px;
+          border-radius: 999px;
+          text-decoration: none;
+          color: rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.04);
+          font-weight: 700;
+          font-size: 14px;
+        }
+
+        .toplink.active {
+          border-color: rgba(255, 255, 255, 0.24);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .toplink.primary {
+          background: rgba(255, 255, 255, 0.92);
+          color: #0b0d12;
+          border-color: rgba(255, 255, 255, 0.18);
         }
 
         h1 {
@@ -387,12 +460,14 @@ export default function PricingPage() {
           color: rgba(255, 255, 255, 0.78);
           line-height: 1.55;
           margin: 0 0 16px;
-          font-size: 13px;
+          font-size: 14px;
+          max-width: 760px;
         }
 
         .mutedSm {
           color: rgba(255, 255, 255, 0.78);
           font-size: 13px;
+          line-height: 1.45;
         }
 
         .strong {
@@ -400,30 +475,59 @@ export default function PricingPage() {
         }
 
         .grid {
-          display: flex;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
-          flex-wrap: wrap;
           margin-top: 16px;
         }
 
         .card {
-          flex: 1 1 320px;
           border-radius: 18px;
-          padding: 16px;
+          padding: 18px;
           background: linear-gradient(180deg, rgba(15, 18, 24, 0.55), rgba(15, 18, 24, 0.38));
           border: 1px solid rgba(255, 255, 255, 0.14);
           box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
           backdrop-filter: blur(14px);
+          min-width: 0;
+        }
+
+        .featured {
+          border-color: rgba(255, 194, 102, 0.4);
+          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 194, 102, 0.14) inset;
+        }
+
+        .freeCard {
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(15, 18, 24, 0.32));
+        }
+
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(255, 255, 255, 0.92);
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          margin-bottom: 12px;
+        }
+
+        .pill.accent {
+          background: rgba(255, 194, 102, 0.14);
+          border-color: rgba(255, 194, 102, 0.32);
+          color: #ffd08a;
         }
 
         .card h2 {
           margin: 0;
-          font-size: 18px;
+          font-size: 22px;
           letter-spacing: -0.01em;
         }
 
         .price {
-          font-size: 34px;
+          font-size: 38px;
           font-weight: 900;
           margin: 10px 0 8px;
           letter-spacing: -0.02em;
@@ -437,10 +541,11 @@ export default function PricingPage() {
 
         li {
           margin: 8px 0;
+          line-height: 1.5;
         }
 
         .btn {
-          padding: 10px 14px;
+          padding: 11px 14px;
           border-radius: 12px;
           cursor: pointer;
           font-weight: 900;
@@ -452,6 +557,7 @@ export default function PricingPage() {
           background: rgba(255, 255, 255, 0.92);
           color: #0b0d12;
           transition: transform 0.12s ease, filter 0.12s ease;
+          min-height: 44px;
         }
 
         .btn:hover {
@@ -482,8 +588,12 @@ export default function PricingPage() {
           margin-top: 12px;
         }
 
+        .bottomRow {
+          justify-content: flex-start;
+        }
+
         .divider {
-          margin: 12px 0;
+          margin: 14px 0;
           border: none;
           border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
@@ -504,24 +614,52 @@ export default function PricingPage() {
           backdrop-filter: blur(10px);
         }
 
+        @media (max-width: 960px) {
+          .grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media (max-width: 640px) {
           .wrap {
             margin: 26px auto;
             padding: 0 16px;
           }
+
+          .topbar {
+            gap: 8px;
+          }
+
+          .toplink {
+            flex: 1 1 calc(50% - 8px);
+            text-align: center;
+          }
+
           h1 {
             font-size: 28px;
           }
+
+          .muted {
+            font-size: 13px;
+          }
+
           .grid {
             gap: 12px;
           }
+
           .card {
             padding: 14px;
           }
+
           .btn {
             width: 100%;
           }
+
           .row {
+            width: 100%;
+          }
+
+          .bottomRow {
             width: 100%;
           }
         }
