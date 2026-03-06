@@ -137,6 +137,67 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "missing_orderID" }, { status: 400 });
     }
 
+    // 1) Read original order first so we can trust the original metadata
+    const orderResp = await fetch(
+      `${paypalBase()}/v2/checkout/orders/${encodeURIComponent(orderID)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${basicAuth()}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const orderData = await orderResp.json().catch(() => ({}));
+    if (!orderResp.ok) {
+      return NextResponse.json(
+        { error: "paypal_get_order_failed", details: orderData },
+        { status: 502 }
+      );
+    }
+
+    const originalCustomId = orderData?.purchase_units?.[0]?.custom_id;
+    const originalInvoiceId = orderData?.purchase_units?.[0]?.invoice_id;
+
+    const planRaw = clean(originalCustomId);
+    const plan =
+      planRaw === "project" || planRaw === "lifetime"
+        ? (planRaw as "project" | "lifetime")
+        : null;
+
+    if (!plan) {
+      return NextResponse.json(
+        {
+          error: "missing_or_invalid_plan",
+          details: { custom_id: originalCustomId },
+        },
+        { status: 400 }
+      );
+    }
+
+    const invoiceUserId = parseInvoiceUserId(originalInvoiceId);
+    if (!invoiceUserId) {
+      return NextResponse.json(
+        {
+          error: "missing_or_invalid_invoice_id",
+          details: { invoice_id: originalInvoiceId },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (invoiceUserId !== callerUserId) {
+      return NextResponse.json(
+        {
+          error: "user_mismatch",
+          details: { caller: callerUserId, invoiceUser: invoiceUserId },
+        },
+        { status: 403 }
+      );
+    }
+
+    // 2) Capture after validating the original order belongs to the caller
     const resp = await fetch(
       `${paypalBase()}/v2/checkout/orders/${encodeURIComponent(orderID)}/capture`,
       {
@@ -163,36 +224,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const planRaw = clean(data?.purchase_units?.[0]?.custom_id);
-    const plan =
-      planRaw === "project" || planRaw === "lifetime"
-        ? (planRaw as "project" | "lifetime")
-        : null;
-
-    if (!plan) {
-      return NextResponse.json(
-        { error: "missing_or_invalid_plan", details: { custom_id: data?.purchase_units?.[0]?.custom_id } },
-        { status: 400 }
-      );
-    }
-
-    const invoiceId = data?.purchase_units?.[0]?.invoice_id;
-    const invoiceUserId = parseInvoiceUserId(invoiceId);
-
-    if (!invoiceUserId) {
-      return NextResponse.json(
-        { error: "missing_or_invalid_invoice_id", details: { invoice_id: invoiceId } },
-        { status: 400 }
-      );
-    }
-
-    if (invoiceUserId !== callerUserId) {
-      return NextResponse.json(
-        { error: "user_mismatch", details: { caller: callerUserId, invoiceUser: invoiceUserId } },
-        { status: 403 }
-      );
-    }
-
     if (!validateAmountIfConfigured(data, plan)) {
       return NextResponse.json({ error: "amount_validation_failed" }, { status: 400 });
     }
@@ -201,7 +232,7 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    // ✅ Idempotency / anti-downgrade (surgical, no schema changes)
+    // ✅ Idempotency / anti-downgrade
     const existing = await supabaseAdmin
       .from("usage_limits")
       .select("plan")
