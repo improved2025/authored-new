@@ -17,10 +17,87 @@ export default function StartPage() {
       }
     };
 
+    const parseJson = (raw: any, fallback: any = null) => {
+      if (!raw) return fallback;
+      if (typeof raw === "object") return raw;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return fallback;
+      }
+    };
+
+    const toIso = (v: any) => {
+      const d = new Date(v || 0);
+      return isNaN(d.getTime()) ? "" : d.toISOString();
+    };
+
+    const bestTimestamp = (obj: any) =>
+      toIso(
+        obj?.updated_at ||
+          obj?.updatedAt ||
+          obj?.savedAt ||
+          obj?.created_at ||
+          obj?.createdAt ||
+          ""
+      );
+
+    const isOutlineArray = (v: any) =>
+      Array.isArray(v) && v.length > 0;
+
+    const normalizeProjectState = (row: any) => {
+      const outline =
+        parseJson(row?.outline, null) ||
+        parseJson(row?.outline_json, null) ||
+        parseJson(row?.outlineJson, null) ||
+        row?.outline ||
+        [];
+
+      return {
+        projectId: row?.id || null,
+        savedAt:
+          bestTimestamp(row) || new Date().toISOString(),
+        title: clean(row?.title) || "Untitled",
+        purpose: clean(row?.purpose) || "",
+        outline: Array.isArray(outline) ? outline : [],
+        topic: clean(row?.topic) || "",
+        audience: clean(row?.audience) || "",
+        blocker: clean(row?.blocker) || "",
+        chapters: Number(row?.chapters || 12) || 12,
+        voiceSample: clean(row?.voice_sample || row?.voiceSample || ""),
+        voiceNotes: clean(row?.voice_notes || row?.voiceNotes || ""),
+      };
+    };
+
+    const getAccountClient = () => {
+      return (window as any).AuthoredAccount?.client || null;
+    };
+
+    const waitForAccountClient = async (timeoutMs = 12000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const client = getAccountClient();
+        if (client?.auth?.getSession) return client;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return null;
+    };
+
+    const getAuthedUser = async () => {
+      try {
+        const client = await waitForAccountClient();
+        if (!client?.auth?.getSession) return null;
+        const { data } = await client.auth.getSession();
+        return data?.session?.user || null;
+      } catch {
+        return null;
+      }
+    };
+
     // ✅ FIX: Always return a plain string map (never optional undefined fields)
     const authHeaders = async (): Promise<Record<string, string>> => {
       try {
-        const client = (window as any).AuthoredAccount?.client;
+        const client = getAccountClient();
         if (!client?.auth?.getSession) return {};
         const { data } = await client.auth.getSession();
         const token = data?.session?.access_token;
@@ -30,13 +107,233 @@ export default function StartPage() {
       }
     };
 
+    const hydrateUiFromState = (s: any) => {
+      if (!s || !Array.isArray(s.outline) || !s.outline.length) return false;
+
+      const emptyState = $("emptyState");
+      if (emptyState) emptyState.style.display = "none";
+
+      if ($("topic")) $("topic").value = s.topic || "";
+      if ($("audience")) $("audience").value = s.audience || "";
+      if ($("blocker")) $("blocker").value = s.blocker || "";
+      if ($("chapters") && s.chapters) $("chapters").value = String(s.chapters);
+      if ($("voiceSample")) $("voiceSample").value = s.voiceSample || "";
+      if ($("voiceNotes")) $("voiceNotes").value = s.voiceNotes || "";
+
+      (window as any).__projectId = s.projectId || null;
+      (window as any).__title = s.title || "Untitled";
+      (window as any).__purpose = s.purpose || "";
+      (window as any).__outlineItems = s.outline || [];
+      (window as any).__lastOutlinePayload = {
+        topic: s.topic || "",
+        audience: s.audience || "",
+        blocker: s.blocker || "",
+        chapters: s.chapters || 12,
+        voiceSample: s.voiceSample || "",
+        voiceNotes: s.voiceNotes || "",
+      };
+
+      const result = $("result");
+      if (result) result.style.display = "block";
+
+      const titleOut = $("titleOut");
+      if (titleOut) titleOut.textContent = (window as any).__title;
+
+      const purposeOut = $("purposeOut");
+      if (purposeOut) purposeOut.textContent = (window as any).__purpose;
+
+      const list = $("outlineOut");
+      if (list) {
+        list.innerHTML = "";
+        (window as any).__outlineItems.forEach((item: any, idx: number) => {
+          const li = document.createElement("li");
+          li.textContent = item?.title || `Chapter ${idx + 1}`;
+          list.appendChild(li);
+        });
+      }
+
+      const picker = $("chapterPick");
+      if (picker) {
+        picker.innerHTML = "";
+        (window as any).__outlineItems.forEach((item: any, idx: number) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = `Chapter ${idx + 1}: ${item?.title || `Chapter ${idx + 1}`}`;
+          picker.appendChild(opt);
+        });
+      }
+
+      return true;
+    };
+
+    const saveLocalStart = (payload: any) => {
+      try {
+        localStorage.setItem("authored_last_start", JSON.stringify(payload));
+      } catch {}
+    };
+
+    const promotePendingToLocal = () => {
+      try {
+        const pendingRaw = localStorage.getItem("authored_pending");
+        if (!pendingRaw) return null;
+
+        const pending = JSON.parse(pendingRaw);
+        if (pending && Array.isArray(pending.outline) && pending.outline.length) {
+          const promoted = {
+            savedAt: pending.savedAt || new Date().toISOString(),
+            title: pending.title || "Untitled",
+            purpose: pending.purpose || "",
+            outline: pending.outline || [],
+            topic: pending.topic || "",
+            audience: pending.audience || "",
+            blocker: pending.blocker || "",
+            chapters: pending.chapters || 12,
+            voiceSample: pending.voiceSample || "",
+            voiceNotes: pending.voiceNotes || "",
+            projectId: pending.projectId || null,
+          };
+          saveLocalStart(promoted);
+          localStorage.removeItem("authored_pending");
+          return promoted;
+        }
+      } catch {}
+      return null;
+    };
+
+    const readLocalStart = () => {
+      try {
+        const raw = localStorage.getItem("authored_last_start");
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s || !Array.isArray(s.outline) || !s.outline.length) return null;
+        return s;
+      } catch {
+        return null;
+      }
+    };
+
+    const fetchRemoteProject = async () => {
+      try {
+        const client = await waitForAccountClient();
+        if (!client) return null;
+
+        const { data: sess } = await client.auth.getSession();
+        const user = sess?.session?.user;
+        if (!user?.id) return null;
+
+        const q = await client
+          .from("projects")
+          .select("*")
+          .eq("user_id", user.id)
+          .limit(20);
+
+        if (q?.error || !Array.isArray(q?.data) || !q.data.length) return null;
+
+        const rows = q.data
+          .map((r: any) => normalizeProjectState(r))
+          .filter((r: any) => isOutlineArray(r.outline));
+
+        if (!rows.length) return null;
+
+        rows.sort((a: any, b: any) => {
+          const ta = new Date(bestTimestamp(a)).getTime() || 0;
+          const tb = new Date(bestTimestamp(b)).getTime() || 0;
+          return tb - ta;
+        });
+
+        return rows[0];
+      } catch {
+        return null;
+      }
+    };
+
+    const saveRemoteProject = async (payload: any) => {
+      try {
+        const client = await waitForAccountClient();
+        if (!client) return;
+
+        const { data: sess } = await client.auth.getSession();
+        const user = sess?.session?.user;
+        if (!user?.id) return;
+
+        const existing = await client
+          .from("projects")
+          .select("*")
+          .eq("user_id", user.id)
+          .limit(20);
+
+        let existingRow: any = null;
+        if (Array.isArray(existing?.data) && existing.data.length) {
+          const sorted = existing.data.slice().sort((a: any, b: any) => {
+            const ta = new Date(bestTimestamp(a)).getTime() || 0;
+            const tb = new Date(bestTimestamp(b)).getTime() || 0;
+            return tb - ta;
+          });
+          existingRow = sorted[0] || null;
+        }
+
+        const rowPayload: any = {
+          user_id: user.id,
+          topic: payload.topic || "",
+          audience: payload.audience || "",
+          blocker: payload.blocker || "",
+          chapters: payload.chapters || 12,
+          voice_sample: payload.voiceSample || "",
+          voice_notes: payload.voiceNotes || "",
+          title: payload.title || "Untitled",
+          purpose: payload.purpose || "",
+          outline: Array.isArray(payload.outline) ? payload.outline : [],
+          updated_at: new Date().toISOString(),
+        };
+
+        if (payload.projectId) {
+          const up = await client
+            .from("projects")
+            .update(rowPayload)
+            .eq("id", payload.projectId)
+            .select("id")
+            .maybeSingle();
+
+          if (!up?.error && up?.data?.id) {
+            (window as any).__projectId = up.data.id;
+            return;
+          }
+        }
+
+        if (existingRow?.id) {
+          const up = await client
+            .from("projects")
+            .update(rowPayload)
+            .eq("id", existingRow.id)
+            .select("id")
+            .maybeSingle();
+
+          if (!up?.error && up?.data?.id) {
+            (window as any).__projectId = up.data.id;
+            return;
+          }
+        }
+
+        const ins = await client
+          .from("projects")
+          .insert(rowPayload)
+          .select("id")
+          .maybeSingle();
+
+        if (!ins?.error && ins?.data?.id) {
+          (window as any).__projectId = ins.data.id;
+        }
+      } catch {
+        // best effort only, do not break working local flow
+      }
+    };
+
     // ✅ START PAGE AUTH GATE (prevents guests from using /start)
     (async function requireLoginForStart() {
       try {
         const account = (window as any).AuthoredAccount;
         const client = account?.client;
 
-        // account.js loads via <Script beforeInteractive>, but on first paint it can still be racing.
         if (!client?.auth?.getSession) {
           setTimeout(() => requireLoginForStart(), 50);
           return;
@@ -45,19 +342,16 @@ export default function StartPage() {
         const { data } = await client.auth.getSession();
         const user = data?.session?.user || null;
 
-        // Start page is logged-in only
         if (!user) {
           window.location.replace("/login");
           return;
         }
 
-        // If anon ever exists, block it
         if (user.is_anonymous) {
           window.location.replace("/login");
           return;
         }
 
-        // Must be verified
         if (!user.email_confirmed_at) {
           window.location.replace("/verify");
           return;
@@ -136,85 +430,44 @@ export default function StartPage() {
       return active ? clean(active.textContent) : "";
     };
 
-    // ===== Restore last start + promote guest pending (YOUR ORIGINAL LOGIC) =====
-    (function restoreLastStart() {
+    // ===== Restore local/remote project state =====
+    (async function restoreLastStart() {
       try {
-        const pendingRaw = localStorage.getItem("authored_pending");
-        if (pendingRaw) {
-          const pending = JSON.parse(pendingRaw);
-          if (pending && Array.isArray(pending.outline) && pending.outline.length) {
-            localStorage.setItem(
-              "authored_last_start",
-              JSON.stringify({
-                savedAt: pending.savedAt || new Date().toISOString(),
-                title: pending.title || "Untitled",
-                purpose: pending.purpose || "",
-                outline: pending.outline || [],
-                topic: pending.topic || "",
-                audience: pending.audience || "",
-                blocker: pending.blocker || "",
-                chapters: pending.chapters || 12,
-                voiceSample: pending.voiceSample || "",
-                voiceNotes: pending.voiceNotes || "",
-              })
-            );
-            localStorage.removeItem("authored_pending");
-          }
+        const promoted = promotePendingToLocal();
+        const localState = promoted || readLocalStart();
+        const remoteState = await fetchRemoteProject();
+
+        let chosen = localState;
+
+        if (!chosen && remoteState) {
+          chosen = remoteState;
+        } else if (chosen && remoteState) {
+          const localTs = new Date(bestTimestamp(chosen)).getTime() || 0;
+          const remoteTs = new Date(bestTimestamp(remoteState)).getTime() || 0;
+          if (remoteTs > localTs) chosen = remoteState;
         }
 
-        const raw = localStorage.getItem("authored_last_start");
-        if (!raw) return;
+        if (!chosen) return;
 
-        const s = JSON.parse(raw);
-        if (!s || !Array.isArray(s.outline) || !s.outline.length) return;
+        hydrateUiFromState(chosen);
 
-        const emptyState = $("emptyState");
-        if (emptyState) emptyState.style.display = "none";
-
-        if ($("topic")) $("topic").value = s.topic || "";
-        if ($("audience")) $("audience").value = s.audience || "";
-        if ($("blocker")) $("blocker").value = s.blocker || "";
-        if ($("chapters") && s.chapters) $("chapters").value = String(s.chapters);
-        if ($("voiceSample")) $("voiceSample").value = s.voiceSample || "";
-        if ($("voiceNotes")) $("voiceNotes").value = s.voiceNotes || "";
-
-        (window as any).__title = s.title || "Untitled";
-        (window as any).__purpose = s.purpose || "";
-        (window as any).__outlineItems = s.outline || [];
-
-        const result = $("result");
-        if (result) result.style.display = "block";
-
-        const titleOut = $("titleOut");
-        if (titleOut) titleOut.textContent = (window as any).__title;
-
-        const purposeOut = $("purposeOut");
-        if (purposeOut) purposeOut.textContent = (window as any).__purpose;
-
-        const list = $("outlineOut");
-        if (list) {
-          list.innerHTML = "";
-          (window as any).__outlineItems.forEach((item: any, idx: number) => {
-            const li = document.createElement("li");
-            li.textContent = item?.title || `Chapter ${idx + 1}`;
-            list.appendChild(li);
-          });
-        }
-
-        const picker = $("chapterPick");
-        if (picker) {
-          picker.innerHTML = "";
-          (window as any).__outlineItems.forEach((item: any, idx: number) => {
-            const opt = document.createElement("option");
-            opt.value = String(idx);
-            opt.textContent = `Chapter ${idx + 1}: ${item?.title || `Chapter ${idx + 1}`}`;
-            picker.appendChild(opt);
-          });
-        }
+        saveLocalStart({
+          savedAt: bestTimestamp(chosen) || new Date().toISOString(),
+          title: chosen.title || "Untitled",
+          purpose: chosen.purpose || "",
+          outline: chosen.outline || [],
+          topic: chosen.topic || "",
+          audience: chosen.audience || "",
+          blocker: chosen.blocker || "",
+          chapters: chosen.chapters || 12,
+          voiceSample: chosen.voiceSample || "",
+          voiceNotes: chosen.voiceNotes || "",
+          projectId: chosen.projectId || null,
+        });
       } catch {}
     })();
 
-    // ===== Core outline generation (YOUR ORIGINAL FLOW, FIXED STRINGS ONLY) =====
+    // ===== Core outline generation =====
     async function runOutlineGeneration() {
       const emptyState = $("emptyState");
       if (emptyState) emptyState.style.display = "none";
@@ -265,7 +518,7 @@ export default function StartPage() {
         const data = await safeJson(resp);
         if (!resp.ok) throw new Error(data?.error || "Request failed");
 
-        (window as any).__projectId = data.projectId || data.project_id || null;
+        (window as any).__projectId = data.projectId || data.project_id || (window as any).__projectId || null;
 
         const title = data.title || "Untitled";
         const purpose = data.purpose || "";
@@ -275,23 +528,35 @@ export default function StartPage() {
         (window as any).__title = title;
         (window as any).__purpose = purpose;
 
-        try {
-          localStorage.setItem(
-            "authored_last_start",
-            JSON.stringify({
-              savedAt: new Date().toISOString(),
-              title,
-              purpose,
-              outline,
-              topic,
-              audience,
-              blocker,
-              chapters,
-              voiceSample,
-              voiceNotes,
-            })
-          );
-        } catch {}
+        const localPayload = {
+          savedAt: new Date().toISOString(),
+          title,
+          purpose,
+          outline,
+          topic,
+          audience,
+          blocker,
+          chapters,
+          voiceSample,
+          voiceNotes,
+          projectId: (window as any).__projectId || null,
+        };
+
+        saveLocalStart(localPayload);
+
+        // best effort remote persistence for cross-browser continuity
+        void saveRemoteProject({
+          projectId: (window as any).__projectId || null,
+          title,
+          purpose,
+          outline,
+          topic,
+          audience,
+          blocker,
+          chapters,
+          voiceSample,
+          voiceNotes,
+        });
 
         $("titleOut").textContent = title;
         $("purposeOut").textContent = purpose;
@@ -323,7 +588,7 @@ export default function StartPage() {
 
     (window as any).__runOutlineGeneration = runOutlineGeneration;
 
-    // ===== Button wiring (THIS is what fixes non-clicking) =====
+    // ===== Button wiring =====
     $("beginBtn")?.addEventListener("click", () => {
       const topic = clean($("topic")?.value);
       const audience = clean($("audience")?.value);
@@ -425,7 +690,6 @@ export default function StartPage() {
       out.innerHTML = "<li>Generating title ideas...</li>";
 
       try {
-        // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           ...(await authHeaders()),
@@ -449,7 +713,7 @@ export default function StartPage() {
         if (data?.error === "project_locked") {
           out.innerHTML = "";
           showUpgrade(
-            "This project is locked after your first expansion on the Project plan. Upgrade to Lifetime to start a new book."
+            "This account already has an active Project plan book. Open that project here or on the original browser, or upgrade to Lifetime to start a new one."
           );
           return;
         }
@@ -500,7 +764,6 @@ export default function StartPage() {
       if (introOut) introOut.textContent = "Generating introduction...";
 
       try {
-        // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           ...(await authHeaders()),
@@ -510,7 +773,6 @@ export default function StartPage() {
           method: "POST",
           headers,
           body: JSON.stringify({
-            // ✅ intro endpoint expects these fields
             bookTitle: (window as any).__title || clean($("titleOut")?.textContent),
             purpose: (window as any).__purpose || clean($("purposeOut")?.textContent),
             outline: (window as any).__outlineItems || [],
@@ -524,7 +786,7 @@ export default function StartPage() {
         if (data?.error === "project_locked") {
           if (introOut) introOut.textContent = "Project locked.";
           showUpgrade(
-            "This project is locked after your first expansion on the Project plan. Upgrade to Lifetime to start a new book."
+            "This account already has an active Project plan book. Open that project here or on the original browser, or upgrade to Lifetime to start a new one."
           );
           return;
         }
@@ -600,7 +862,6 @@ export default function StartPage() {
       if (expandedOut)
         expandedOut.textContent = mode === "regen" ? "Regenerating..." : "Expanding...";
 
-      // ✅ FIX: Build headers as a typed string map (prevents TS overload mismatch)
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(await authHeaders()),
@@ -638,7 +899,7 @@ export default function StartPage() {
       if (data?.error === "project_locked") {
         if (expandedOut) expandedOut.textContent = "Project locked.";
         showUpgrade(
-          "This project is locked after your first expansion on the Project plan. Upgrade to Lifetime to start a new book."
+          "This account already has an active Project plan book. Open that project here or on the original browser, or upgrade to Lifetime to start a new one."
         );
         return;
       }
@@ -686,7 +947,7 @@ export default function StartPage() {
       downloadText(`${safe}_expanded_chapter.txt`, (window as any).__expandedText || "");
     });
 
-    // ===== Genre quick-fill (same behavior) =====
+    // ===== Genre quick-fill =====
     (function initGenreButtons() {
       const buttons = document.querySelectorAll(".genre-btn") as NodeListOf<HTMLButtonElement>;
       const topicEl = $("topic") as HTMLTextAreaElement | null;
@@ -731,7 +992,6 @@ export default function StartPage() {
 
   return (
     <>
-      {/* Keep your original external dependencies */}
       <Script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" strategy="beforeInteractive" />
       <Script src="/account.js" strategy="beforeInteractive" />
       <Script src="/auth-guard.js" strategy="beforeInteractive" />
@@ -968,10 +1228,6 @@ export default function StartPage() {
             </div>
           </div>
         </div>
-
-        <p className="muted" style={{ marginTop: 10 }}>
-          For now, these buttons go to a placeholder page. We’ll wire payment later.
-        </p>
       </div>
 
       <label>What do you want to write about?</label>
