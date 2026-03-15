@@ -11,6 +11,14 @@ function getSupabase() {
   return createClient(url, anon, { auth: { persistSession: true, autoRefreshToken: true } });
 }
 
+function readHashParams() {
+  if (typeof window === "undefined") return new URLSearchParams();
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash || "";
+  return new URLSearchParams(hash);
+}
+
 export default function ResetConfirmClient() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -25,15 +33,76 @@ export default function ResetConfirmClient() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [kind, setKind] = useState<"" | "ok" | "err">("");
+  const [ready, setReady] = useState(false);
+
+  async function establishRecoverySessionFromUrl() {
+    const code = sp.get("code") || "";
+    const token_hash = sp.get("token_hash") || "";
+    const type = (sp.get("type") || "").trim();
+
+    // PKCE/code flow
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
+      return;
+    }
+
+    // token_hash flow
+    if (token_hash && type === "recovery") {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash,
+        type: "recovery",
+      });
+      if (error) throw error;
+      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
+      return;
+    }
+
+    // fragment flow
+    const hash = readHashParams();
+    const access_token = hash.get("access_token") || "";
+    const refresh_token = hash.get("refresh_token") || "";
+    const hashType = (hash.get("type") || "").trim();
+
+    if (access_token && refresh_token && (!hashType || hashType === "recovery")) {
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (error) throw error;
+      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
+      return;
+    }
+  }
 
   useEffect(() => {
-    // Supabase email link should establish a recovery session automatically.
-    // If it doesn't, we show a clean error instead of guessing.
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data?.session) {
-        setMsg("This reset link is invalid or expired. Request a new one.");
+      setBusy(true);
+      setMsg("");
+      setKind("");
+
+      try {
+        await establishRecoverySessionFromUrl().catch(() => null);
+        await supabase.auth.refreshSession().catch(() => null);
+
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (!data?.session) {
+          setMsg("This reset link is invalid or expired. Request a new one.");
+          setKind("err");
+          setReady(false);
+          return;
+        }
+
+        setReady(true);
+      } catch (err: any) {
+        setMsg(err?.message || "This reset link is invalid or expired. Request a new one.");
         setKind("err");
+        setReady(false);
+      } finally {
+        setBusy(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +129,7 @@ export default function ResetConfirmClient() {
 
       setTimeout(() => {
         window.location.replace(next);
-      }, 600);
+      }, 700);
     } catch (err: any) {
       setMsg(err?.message || "Could not update password.");
       setKind("err");
@@ -83,9 +152,12 @@ export default function ResetConfirmClient() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
             placeholder="••••••••"
+            disabled={!ready || busy}
           />
 
-          <button disabled={busy}>{busy ? "Saving..." : "Update password"}</button>
+          <button disabled={!ready || busy}>
+            {busy ? "Saving..." : "Update password"}
+          </button>
 
           {!!msg && <div className={`msg ${kind}`}>{msg}</div>}
 
