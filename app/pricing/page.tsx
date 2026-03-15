@@ -269,6 +269,7 @@ export default function PricingPage() {
             <ul>
               <li>Expand chapters</li>
               <li>Regenerate drafts</li>
+              <li>Generate 5 intros</li>
               <li>DOCX export</li>
               <li>Voice + tone controls</li>
               <li>Best for one serious manuscript</li>
@@ -310,6 +311,7 @@ export default function PricingPage() {
             <div className="price">$149</div>
             <ul>
               <li>Unlimited projects</li>
+              <li>Generate unlimited intros</li>
               <li>More expansions</li>
               <li>No project restart friction</li>
               <li>Priority features as Authored grows</li>
