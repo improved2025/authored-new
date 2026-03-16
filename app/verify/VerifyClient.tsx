@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
-type Status = "loading" | "no_session" | "unverified" | "error";
+type Status = "loading" | "unverified" | "expired_or_invalid" | "error";
 
 function isEmailConfirmed(user: any) {
   return Boolean(user?.email_confirmed_at || user?.confirmed_at);
@@ -12,10 +12,10 @@ function isEmailConfirmed(user: any) {
 
 function readHashParams() {
   if (typeof window === "undefined") return new URLSearchParams();
-  const hash = window.location.hash?.startsWith("#")
+  const raw = window.location.hash?.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash || "";
-  return new URLSearchParams(hash);
+  return new URLSearchParams(raw);
 }
 
 function cleanPath(next: string) {
@@ -24,66 +24,60 @@ function cleanPath(next: string) {
   return n.startsWith("/") ? n : "/start";
 }
 
+function buildCleanVerifyUrl(next: string) {
+  return `/verify?next=${encodeURIComponent(next)}`;
+}
+
 export default function VerifyClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const next = useMemo(() => {
-    return cleanPath(sp.get("next") || "/start");
-  }, [sp]);
+  const next = useMemo(() => cleanPath(sp.get("next") || "/start"), [sp]);
 
   const [status, setStatus] = useState<Status>("loading");
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
 
   async function establishSessionFromUrl() {
-    try {
-      const code = sp.get("code") || "";
-      const token_hash = sp.get("token_hash") || "";
-      const type = (sp.get("type") || "").trim();
+    const code = sp.get("code") || "";
+    const token_hash = sp.get("token_hash") || "";
+    const type = (sp.get("type") || "").trim();
 
-      // PKCE/code flow
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) throw error;
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
 
-        // Clean the URL after successful exchange
-        window.history.replaceState({}, "", `/verify?next=${encodeURIComponent(next)}`);
-        return;
-      }
-
-      // Token-hash verification flow
-      if (token_hash && type) {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash,
-          type: type as any,
-        });
-        if (error) throw error;
-
-        window.history.replaceState({}, "", `/verify?next=${encodeURIComponent(next)}`);
-        return;
-      }
-
-      // Fragment/session flow
-      const hash = readHashParams();
-      const access_token = hash.get("access_token") || "";
-      const refresh_token = hash.get("refresh_token") || "";
-
-      if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        });
-        if (error) throw error;
-
-        window.history.replaceState({}, "", `/verify?next=${encodeURIComponent(next)}`);
-        return;
-      }
-    } catch (e: any) {
-      setStatus("error");
-      setMsg(e?.message || "Could not verify this link.");
-      throw e;
+      window.history.replaceState({}, "", buildCleanVerifyUrl(next));
+      return true;
     }
+
+    if (token_hash && type) {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash,
+        type: type as any,
+      });
+      if (error) throw error;
+
+      window.history.replaceState({}, "", buildCleanVerifyUrl(next));
+      return true;
+    }
+
+    const hash = readHashParams();
+    const access_token = hash.get("access_token") || "";
+    const refresh_token = hash.get("refresh_token") || "";
+
+    if (access_token && refresh_token) {
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (error) throw error;
+
+      window.history.replaceState({}, "", buildCleanVerifyUrl(next));
+      return true;
+    }
+
+    return false;
   }
 
   async function check() {
@@ -91,25 +85,27 @@ export default function VerifyClient() {
     setMsg("");
 
     try {
-      await establishSessionFromUrl().catch(() => null);
+      const hadAuthParams =
+        Boolean(sp.get("code")) ||
+        Boolean(sp.get("token_hash")) ||
+        Boolean(readHashParams().get("access_token"));
 
-      // Refresh after URL/session exchange attempt
-      await supabase.auth.refreshSession().catch(() => null);
-
-      const [{ data: sessionData }, { data, error }] = await Promise.all([
-        supabase.auth.getSession(),
-        supabase.auth.getUser(),
-      ]);
-
-      if (error) {
-        setStatus("error");
-        setMsg(error.message || "Unable to read session.");
-        return;
+      if (hadAuthParams) {
+        await establishSessionFromUrl();
       }
 
-      const user = data?.user || sessionData?.session?.user || null;
+      const { data: userData, error } = await supabase.auth.getUser();
+      if (error) throw error;
+
+      const user = userData?.user ?? null;
+
       if (!user) {
-        setStatus("no_session");
+        setStatus(hadAuthParams ? "expired_or_invalid" : "unverified");
+        setMsg(
+          hadAuthParams
+            ? "This verification link is invalid, expired, or has already been used."
+            : "Please check your inbox and click the verification link."
+        );
         return;
       }
 
@@ -121,21 +117,23 @@ export default function VerifyClient() {
       }
 
       setStatus("unverified");
+      setMsg("Your account is not verified yet. Please check your inbox.");
     } catch (e: any) {
       setStatus("error");
-      setMsg(e?.message || "Please try again.");
+      setMsg(e?.message || "Could not verify this link.");
     }
   }
 
   async function resend() {
     setMsg("");
-    setStatus("loading");
 
     if (!email) {
-      setMsg("Your email isn’t available. Please log in again, then return here.");
-      setStatus("unverified");
+      setStatus("error");
+      setMsg("We could not determine your email address. Please log in again.");
       return;
     }
+
+    setStatus("loading");
 
     const redirectTo =
       typeof window !== "undefined"
@@ -149,13 +147,13 @@ export default function VerifyClient() {
     } as any);
 
     if (error) {
-      setMsg(error.message || "Could not resend verification email.");
       setStatus("unverified");
+      setMsg(error.message || "Could not resend verification email.");
       return;
     }
 
-    setMsg("Verification email sent. Check your inbox and spam/junk.");
     setStatus("unverified");
+    setMsg("Verification email sent. Check inbox and spam/junk.");
   }
 
   useEffect(() => {
@@ -172,19 +170,22 @@ export default function VerifyClient() {
     );
   }
 
-  if (status === "no_session") {
+  if (status === "expired_or_invalid") {
     return (
       <main className="relative z-10 mx-auto max-w-xl p-6">
-        <h1 className="text-2xl font-semibold">Please log in</h1>
-        <p className="mt-2 opacity-80">
-          You need to be logged in to verify your account.
-        </p>
-        <button
-          className="mt-4 rounded-md border px-4 py-2"
-          onClick={() => router.replace(`/login?next=${encodeURIComponent("/verify")}`)}
-        >
-          Go to login
-        </button>
+        <h1 className="text-2xl font-semibold">Verification link problem</h1>
+        <p className="mt-2 opacity-80">{msg}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="rounded-md border px-4 py-2" onClick={check}>
+            Retry
+          </button>
+          <button
+            className="rounded-md border px-4 py-2"
+            onClick={() => router.replace("/login")}
+          >
+            Go to login
+          </button>
+        </div>
       </main>
     );
   }
@@ -200,7 +201,7 @@ export default function VerifyClient() {
           </button>
           <button
             className="rounded-md border px-4 py-2"
-            onClick={() => router.replace(`/login?next=${encodeURIComponent("/verify")}`)}
+            onClick={() => router.replace("/login")}
           >
             Log in again
           </button>
@@ -214,8 +215,7 @@ export default function VerifyClient() {
       <h1 className="text-2xl font-semibold">Verify your email</h1>
       <p className="mt-2 opacity-80">
         We sent a verification link to{" "}
-        <span className="font-medium">{email || "your email"}</span>. Click it,
-        then return here.
+        <span className="font-medium">{email || "your email"}</span>.
       </p>
 
       {msg ? <p className="mt-3 text-sm opacity-80">{msg}</p> : null}
@@ -226,12 +226,6 @@ export default function VerifyClient() {
         </button>
         <button className="rounded-md border px-4 py-2" onClick={resend}>
           Resend email
-        </button>
-        <button
-          className="rounded-md border px-4 py-2"
-          onClick={() => router.replace(next)}
-        >
-          Continue
         </button>
       </div>
     </main>

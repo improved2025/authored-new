@@ -2,14 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase/client";
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  return createClient(url, anon, { auth: { persistSession: true, autoRefreshToken: true } });
-}
+type Status = "loading" | "ready" | "invalid" | "error";
 
 function readHashParams() {
   if (typeof window === "undefined") return new URLSearchParams();
@@ -19,47 +14,53 @@ function readHashParams() {
   return new URLSearchParams(hash);
 }
 
+function cleanPath(next: string) {
+  const n = (next || "").trim();
+  if (!n) return "/start";
+  return n.startsWith("/") ? n : "/start";
+}
+
+function buildCleanResetUrl(next: string) {
+  return `/reset/confirm?next=${encodeURIComponent(next)}`;
+}
+
 export default function ResetConfirmClient() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = useMemo(() => getSupabase(), []);
 
   const next = useMemo(() => {
-    const n = sp.get("next") || "/start";
-    return n.startsWith("/") ? n : "/start";
+    return cleanPath(sp.get("next") || "/start");
   }, [sp]);
 
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status>("loading");
   const [msg, setMsg] = useState("");
-  const [kind, setKind] = useState<"" | "ok" | "err">("");
-  const [ready, setReady] = useState(false);
 
   async function establishRecoverySessionFromUrl() {
     const code = sp.get("code") || "";
     const token_hash = sp.get("token_hash") || "";
     const type = (sp.get("type") || "").trim();
 
-    // PKCE/code flow
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) throw error;
-      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
-      return;
+
+      window.history.replaceState({}, "", buildCleanResetUrl(next));
+      return true;
     }
 
-    // token_hash flow
     if (token_hash && type === "recovery") {
       const { error } = await supabase.auth.verifyOtp({
         token_hash,
         type: "recovery",
       });
       if (error) throw error;
-      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
-      return;
+
+      window.history.replaceState({}, "", buildCleanResetUrl(next));
+      return true;
     }
 
-    // fragment flow
     const hash = readHashParams();
     const access_token = hash.get("access_token") || "";
     const refresh_token = hash.get("refresh_token") || "";
@@ -71,72 +72,88 @@ export default function ResetConfirmClient() {
         refresh_token,
       });
       if (error) throw error;
-      window.history.replaceState({}, "", `/reset/confirm?next=${encodeURIComponent(next)}`);
-      return;
+
+      window.history.replaceState({}, "", buildCleanResetUrl(next));
+      return true;
+    }
+
+    return false;
+  }
+
+  async function bootstrap() {
+    setStatus("loading");
+    setMsg("");
+
+    try {
+      const hasAuthParams =
+        Boolean(sp.get("code")) ||
+        Boolean(sp.get("token_hash")) ||
+        Boolean(readHashParams().get("access_token"));
+
+      if (hasAuthParams) {
+        await establishRecoverySessionFromUrl();
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+
+      if (!data?.session) {
+        setStatus(hasAuthParams ? "invalid" : "error");
+        setMsg(
+          hasAuthParams
+            ? "This reset link is invalid, expired, already used, or was opened in a different browser or device."
+            : "No recovery session found. Please use the link from your reset email."
+        );
+        return;
+      }
+
+      setStatus("ready");
+      setMsg("Enter your new password.");
+    } catch (err: any) {
+      setStatus("invalid");
+      setMsg(
+        err?.message ||
+          "This reset link is invalid, expired, already used, or was opened in a different browser or device."
+      );
     }
   }
 
   useEffect(() => {
-    (async () => {
-      setBusy(true);
-      setMsg("");
-      setKind("");
-
-      try {
-        await establishRecoverySessionFromUrl().catch(() => null);
-        await supabase.auth.refreshSession().catch(() => null);
-
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        if (!data?.session) {
-          setMsg("This reset link is invalid or expired. Request a new one.");
-          setKind("err");
-          setReady(false);
-          return;
-        }
-
-        setReady(true);
-      } catch (err: any) {
-        setMsg(err?.message || "This reset link is invalid or expired. Request a new one.");
-        setKind("err");
-        setReady(false);
-      } finally {
-        setBusy(false);
-      }
-    })();
+    void bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onSetPassword = async (e: React.FormEvent) => {
+  async function onSetPassword(e: React.FormEvent) {
     e.preventDefault();
+
+    if (status !== "ready") return;
+
     setMsg("");
-    setKind("");
 
     if (password.length < 8) {
       setMsg("Password must be at least 8 characters.");
-      setKind("err");
       return;
     }
 
     setBusy(true);
+
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      setMsg("Password updated. Redirecting...");
-      setKind("ok");
+      setMsg("Password updated. Redirecting to login...");
 
-      setTimeout(() => {
-        window.location.replace(next);
-      }, 700);
+      await supabase.auth.signOut();
+
+      window.setTimeout(() => {
+        router.replace("/login?reset=success");
+      }, 800);
     } catch (err: any) {
       setMsg(err?.message || "Could not update password.");
-      setKind("err");
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   return (
     <main className="wrap">
@@ -144,31 +161,37 @@ export default function ResetConfirmClient() {
       <p className="sub">Choose a strong password you’ll remember.</p>
 
       <div className="card">
-        <form onSubmit={onSetPassword}>
-          <label>New password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            placeholder="••••••••"
-            disabled={!ready || busy}
-          />
+        {status === "loading" ? (
+          <div className="msg">Preparing secure reset...</div>
+        ) : (
+          <form onSubmit={onSetPassword}>
+            <label>New password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              placeholder="••••••••"
+              disabled={status !== "ready" || busy}
+            />
 
-          <button disabled={!ready || busy}>
-            {busy ? "Saving..." : "Update password"}
-          </button>
+            <button disabled={status !== "ready" || busy}>
+              {busy ? "Saving..." : "Update password"}
+            </button>
 
-          {!!msg && <div className={`msg ${kind}`}>{msg}</div>}
+            {!!msg && (
+              <div className={`msg ${status === "ready" ? "" : "err"}`}>{msg}</div>
+            )}
 
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => router.replace(`/reset?next=${encodeURIComponent(next)}`)}
-          >
-            Request a new reset link
-          </button>
-        </form>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => router.replace(`/reset?next=${encodeURIComponent(next)}`)}
+            >
+              Request a new reset link
+            </button>
+          </form>
+        )}
       </div>
 
       <style jsx>{`
@@ -228,9 +251,7 @@ export default function ResetConfirmClient() {
           font-size: 13px;
           line-height: 1.4;
           min-height: 18px;
-        }
-        .msg.ok {
-          color: #bff0bf;
+          color: rgba(255, 255, 255, 0.9);
         }
         .msg.err {
           color: #ffb4b4;
