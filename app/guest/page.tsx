@@ -819,7 +819,7 @@ export default function GuestPage() {
             <br />
             Create a free account to continue and we’ll save this project for you.
             <div className="actions" style={{ marginTop: 10 }}>
-              <button className="btn" id="createAccountBtn" type="button">
+              <button className="btn" id="createAccountBtn"  style={{ color: "#111" }} type="button">
                 Create free account
               </button>
               <button className="btn secondary" id="loginBtn" type="button">

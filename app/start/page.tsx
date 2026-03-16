@@ -1091,6 +1091,7 @@ export default function StartPage() {
           padding: 8px 12px;
           font-size: 13px;
           cursor: pointer;
+          color: #111827;
         }
         .genre-btn:hover{ background:#f6f6f6; }
         .genre-btn.active{
@@ -1264,19 +1265,23 @@ export default function StartPage() {
 
       <hr />
 
-      <h3 style={{ margin: "0 0 8px" }}>Your voice</h3>
-      <p className="muted" style={{ margin: "0 0 10px" }}>
+      <h3 style={{ margin: "0 0 8px", color: "#111827", opacity: 1 }}>Your voice</h3>
+      <p className="muted" style={{ margin: "0 0 10px", color: "#111827", opacity: 1 }}>
         If you want Authored to sound like you, paste a short sample of your writing below. A page is enough. The better
         the sample, the better the voice match.
       </p>
 
-      <label>Your writing sample (optional but recommended)</label>
+      <label style={{ color: "#111827", opacity: 1 }}>
+          Your writing sample (optional but recommended)
+          </label>
       <textarea
         id="voiceSample"
         placeholder="Paste something you wrote: a sermon excerpt, a blog post, a letter, a chapter draft, anything that sounds like you."
       ></textarea>
 
-      <label>Voice notes (optional)</label>
+      <label style={{ color: "#111827", opacity: 1 }}>
+         Voice notes (optional)
+         </label>
       <input
         id="voiceNotes"
         type="text"
@@ -1287,7 +1292,9 @@ export default function StartPage() {
 
       <div className="row">
         <div style={{ minWidth: 260, flex: 1 }}>
-          <label style={{ marginTop: 0 }}>How many chapters?</label>
+          <label style={{ marginTop: 0, color: "#111827", opacity: 1 }}>
+             How many chapters?
+             </label>
           <select id="chapters" defaultValue="12">
             <option value="5">5</option>
             <option value="8">8</option>
