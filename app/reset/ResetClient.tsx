@@ -44,6 +44,7 @@ export default function ResetClient() {
     setBusy(true);
 
     try {
+      console.log("RESET_REDIRECT_TO", buildResetRedirect(next));
       const { error } = await supabase.auth.resetPasswordForEmail(em, {
         redirectTo: buildResetRedirect(next),
       });
