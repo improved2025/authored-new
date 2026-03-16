@@ -3,35 +3,31 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase/client";
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  return createClient(url, anon, { auth: { persistSession: true, autoRefreshToken: true } });
+function cleanPath(next: string) {
+  const n = (next || "").trim();
+  if (!n) return "/start";
+  return n.startsWith("/") ? n : "/start";
+}
+
+function buildResetRedirect(next: string) {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "https://myauthored.com";
+  return `${origin}/reset/confirm?next=${encodeURIComponent(next)}`;
 }
 
 export default function ResetClient() {
   const sp = useSearchParams();
-  const supabase = useMemo(() => getSupabase(), []);
 
   const next = useMemo(() => {
-    const n = sp.get("next") || "/start";
-    return n.startsWith("/") ? n : "/start";
+    return cleanPath(sp.get("next") || "/start");
   }, [sp]);
 
   const [email, setEmail] = useState(sp.get("email") || "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [kind, setKind] = useState<"" | "ok" | "err">("");
-
-  const redirectTo = () => {
-    // After clicking email link, user lands here to set new password
-    const base = `${window.location.origin}/reset/confirm`;
-    const qs = `next=${encodeURIComponent(next)}`;
-    return `${base}?${qs}`;
-  };
 
   const onSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +42,15 @@ export default function ResetClient() {
     }
 
     setBusy(true);
+
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(em, {
-        redirectTo: redirectTo(),
+        redirectTo: buildResetRedirect(next),
       });
+
       if (error) throw error;
 
-      setMsg("Password reset email sent. Check your inbox.");
+      setMsg("Password reset email sent. Check your inbox and spam/junk folder.");
       setKind("ok");
     } catch (err: any) {
       setMsg(err?.message || "Could not send reset email.");
@@ -76,17 +74,31 @@ export default function ResetClient() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            disabled={busy}
           />
 
-          <button disabled={busy}>{busy ? "Sending..." : "Send reset link"}</button>
+          <button disabled={busy}>
+            {busy ? "Sending..." : "Send reset link"}
+          </button>
 
           {!!msg && <div className={`msg ${kind}`}>{msg}</div>}
 
           <div className="links">
-            <Link className="link" href={`/login?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email.trim())}` : ""}`}>
+            <Link
+              className="link"
+              href={`/login?next=${encodeURIComponent(next)}${
+                email ? `&email=${encodeURIComponent(email.trim())}` : ""
+              }`}
+            >
               Back to login
             </Link>
-            <Link className="link strong" href={`/signup?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email.trim())}` : ""}`}>
+
+            <Link
+              className="link strong"
+              href={`/signup?next=${encodeURIComponent(next)}${
+                email ? `&email=${encodeURIComponent(email.trim())}` : ""
+              }`}
+            >
               Create an account
             </Link>
           </div>

@@ -4,10 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase/client";
 
 function setCookie(name: string, value: string, maxAgeSeconds?: number) {
-  const secure = location.protocol === "https:" ? "; Secure" : "";
+  const secure = typeof window !== "undefined" && location.protocol === "https:" ? "; Secure" : "";
   const maxAge = typeof maxAgeSeconds === "number" ? `; Max-Age=${maxAgeSeconds}` : "";
   document.cookie = `${name}=${encodeURIComponent(value || "")}; Path=/; SameSite=Lax${maxAge}${secure}`;
 }
@@ -18,63 +18,63 @@ function writeAuthCookies(session: any) {
     setCookie("sb-refresh-token", "", 0);
     return;
   }
+
   const oneWeek = 60 * 60 * 24 * 7;
   setCookie("sb-access-token", session.access_token, oneWeek);
   setCookie("sb-refresh-token", session.refresh_token || "", oneWeek);
 }
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  return createClient(url, anon, { auth: { persistSession: true, autoRefreshToken: true } });
-}
-
 function isRealUser(user: any) {
   return !!user && user.is_anonymous === false;
 }
+
 function isVerifiedUser(user: any) {
-  return !!user?.email_confirmed_at;
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+}
+
+function cleanPath(next: string) {
+  const n = (next || "").trim();
+  if (!n) return "/start";
+  return n.startsWith("/") ? n : "/start";
+}
+
+function buildVerifyRedirect(next: string) {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "https://myauthored.com";
+  return `${origin}/verify?next=${encodeURIComponent(next)}`;
 }
 
 export default function SignupClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const next =
-    sp.get("next") ||
-    sp.get("returnTo") ||
-    "/start";
+  const next = useMemo(() => {
+    return cleanPath(sp.get("next") || sp.get("returnTo") || "/start");
+  }, [sp]);
 
   const initialEmail = sp.get("email") || "";
-
-  const supabase = useMemo(() => getSupabase(), []);
 
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [msg, setMsg] = useState<string>("");
+  const [msg, setMsg] = useState("");
   const [msgKind, setMsgKind] = useState<"" | "ok" | "err">("");
-  const [hint, setHint] = useState<string>("");
+  const [hint, setHint] = useState("");
   const [showResend, setShowResend] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
 
-  const emailRedirectTo = () => {
-    const base = `${window.location.origin}/verify`;
-    const qs = `next=${encodeURIComponent(next)}`;
-    return `${base}?${qs}`;
-  };
-
   const goToNext = () => {
-    router.replace(next.startsWith("/") ? next : "/start");
+    router.replace(next);
   };
 
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const user = data?.session?.user;
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        const user = data?.session?.user ?? null;
 
         if (isRealUser(user) && isVerifiedUser(user)) {
           goToNext();
@@ -86,7 +86,10 @@ export default function SignupClient() {
           setMsgKind("err");
           setHint("Check your inbox for the verification email. You can also resend it below.");
           setShowResend(true);
-          if (user?.email) setEmail(user.email);
+
+          if (user?.email) {
+            setEmail(user.email);
+          }
         }
       } catch (e: any) {
         setMsg(e?.message || "Signup page failed to initialize.");
@@ -104,6 +107,7 @@ export default function SignupClient() {
     setShowResend(false);
 
     const em = email.trim();
+
     if (!em || !password) {
       setMsg("Please enter email and password.");
       setMsgKind("err");
@@ -111,16 +115,21 @@ export default function SignupClient() {
     }
 
     setBusy(true);
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: em,
         password,
-        options: { emailRedirectTo: emailRedirectTo() },
+        options: {
+          emailRedirectTo: buildVerifyRedirect(next),
+        },
       });
 
       if (error) throw error;
 
-      if (data?.session) writeAuthCookies(data.session);
+      if (data?.session) {
+        writeAuthCookies(data.session);
+      }
 
       setMsg("Confirm your email to finish signup.");
       setMsgKind("ok");
@@ -149,11 +158,14 @@ export default function SignupClient() {
     }
 
     setResendBusy(true);
+
     try {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: em,
-        options: { emailRedirectTo: emailRedirectTo() },
+        options: {
+          emailRedirectTo: buildVerifyRedirect(next),
+        },
       });
 
       if (error) throw error;
@@ -200,6 +212,7 @@ export default function SignupClient() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={busy || resendBusy}
             />
 
             <label htmlFor="password">Password</label>
@@ -210,6 +223,7 @@ export default function SignupClient() {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
             />
 
             <button type="submit" disabled={busy}>
@@ -237,7 +251,9 @@ export default function SignupClient() {
               <div>Already have an account?</div>
               <Link
                 id="loginLink"
-                href={`/login?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email)}` : ""}`}
+                href={`/login?next=${encodeURIComponent(next)}${
+                  email ? `&email=${encodeURIComponent(email.trim())}` : ""
+                }`}
               >
                 Log in
               </Link>
