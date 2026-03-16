@@ -29,12 +29,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Outline missing" }, { status: 400 });
     }
 
+    const signupUrl = `https://www.myauthored.com/signup?next=/start&email=${encodeURIComponent(email)}`;
+
     const text = [
+      `Your Authored outline is ready.`,
+      ``,
+      `Create your free account to keep writing and save your draft:`,
+      `${signupUrl}`,
+      ``,
       `Working title: ${title}`,
       purpose ? `\nPurpose:\n${purpose}` : "",
-      `\nOutline:\n${outline.map((x: any, i: number) => `${i + 1}. ${typeof x === "string" ? x : x?.title || ""}` ).join("\n")}`,
-      `\n\n— Authored (myauthored.com)`
-    ].join("");
+      `\nOutline:\n${outline
+        .map((x: any, i: number) => `${i + 1}. ${typeof x === "string" ? x : x?.title || ""}`)
+        .join("\n")}`,
+      ``,
+      `Keep writing in Authored:`,
+      `${signupUrl}`,
+      ``,
+      `— Authored (www.myauthored.com)`,
+    ].join("\n");
 
     // IMPORTANT: use a verified sender domain in Resend
     const from = process.env.RESEND_FROM || "Authored <onboarding@resend.dev>";

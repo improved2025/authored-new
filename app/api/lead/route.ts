@@ -24,7 +24,6 @@ function outlineToText(outline: any[]) {
     .join("\n");
 }
 
-// tiny helper for HTML safety
 function escapeHtml(s: string) {
   return s
     .replaceAll("&", "&amp;")
@@ -34,6 +33,10 @@ function escapeHtml(s: string) {
     .replaceAll("'", "&#039;");
 }
 
+function buildSignupUrl(email: string) {
+  return `https://www.myauthored.com/signup?next=/start&email=${encodeURIComponent(email)}`;
+}
+
 export async function POST(req: Request) {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -41,9 +44,12 @@ export async function POST(req: Request) {
     const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
     const RESEND_FROM = process.env.FROM_EMAIL || "Authored <onboarding@resend.dev>";
 
-    if (!SUPABASE_URL) return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
-    if (!SUPABASE_SERVICE_ROLE_KEY)
+    if (!SUPABASE_URL) {
+      return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+    }
 
     const body = (await req.json().catch(() => ({}))) as any;
 
@@ -53,14 +59,17 @@ export async function POST(req: Request) {
     const source = clean(body.source) || "guest_outline";
     const outline = Array.isArray(body.outline) ? body.outline : [];
 
-    if (!email || !isValidEmail(email)) return NextResponse.json({ error: "invalid_email" }, { status: 400 });
-    if (!outline.length) return NextResponse.json({ error: "missing_outline" }, { status: 400 });
+    if (!email || !isValidEmail(email)) {
+      return NextResponse.json({ error: "invalid_email" }, { status: 400 });
+    }
+    if (!outline.length) {
+      return NextResponse.json({ error: "missing_outline" }, { status: 400 });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
 
-    // 1) Save lead (always)
     const insert = await supabase
       .from("leads")
       .insert({ email, source, title, purpose, outline })
@@ -68,10 +77,12 @@ export async function POST(req: Request) {
       .single();
 
     if (insert.error) {
-      return NextResponse.json({ error: "db_insert_failed", details: insert.error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "db_insert_failed", details: insert.error.message },
+        { status: 500 }
+      );
     }
 
-    // 2) Try email (best-effort) — BUT report errors
     let emailed = false;
     let email_error: string | null = null;
     let resend_id: string | null = null;
@@ -84,23 +95,51 @@ export async function POST(req: Request) {
 
         const outlineText = outlineToText(outline);
         const subject = `Your Authored outline: ${title}`;
+        const signupUrl = buildSignupUrl(email);
+
         const html = `
-          <div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
-            <h2 style="margin:0 0 10px;">Here’s your outline</h2>
+          <div style="font-family: Arial, sans-serif; line-height:1.6; color:#111; max-width:680px; margin:0 auto;">
+            <h2 style="margin:0 0 10px;">Your Authored outline is ready</h2>
+
+            <p style="margin:0 0 16px; color:#333;">
+              Your outline is below. Want to keep writing and save your draft in Authored?
+            </p>
+
+            <p style="margin:0 0 18px;">
+              <a
+                href="${signupUrl}"
+                style="display:inline-block; background:#111; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:700;"
+              >
+                Create your free account
+              </a>
+            </p>
+
             <p style="margin:0 0 10px;"><strong>Title:</strong> ${escapeHtml(title)}</p>
             ${purpose ? `<p style="margin:0 0 10px;"><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>` : ""}
+
             <pre style="background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px;font-size:13px;white-space:pre-wrap;">${escapeHtml(
               outlineText
             )}</pre>
-            <p style="margin:14px 0 0; font-size:12px; color:#555;">
-              You can create a free account to expand chapters and save your project.
+
+            <p style="margin:16px 0 8px; color:#333;">
+              Create a free account to continue building this draft inside Authored.
+            </p>
+
+            <p style="margin:0 0 16px;">
+              <a href="${signupUrl}" style="color:#111; font-weight:700;">
+                Create your free account
+              </a>
+            </p>
+
+            <p style="margin:0; font-size:12px; color:#666;">
+              Authored • <a href="https://www.myauthored.com" style="color:#666;">www.myauthored.com</a>
             </p>
           </div>
         `.trim();
 
         const sent = await resend.emails.send({
           from: RESEND_FROM,
-          to: [email], // force array to avoid edge cases
+          to: [email],
           subject,
           html,
         });
@@ -118,7 +157,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Optional: store send status
     try {
       await supabase
         .from("leads")
@@ -137,7 +175,10 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (err: any) {
-    return NextResponse.json({ error: "server_error", details: String(err?.message || err) }, { status: 500 });
+    return NextResponse.json(
+      { error: "server_error", details: String(err?.message || err) },
+      { status: 500 }
+    );
   }
 }
 
