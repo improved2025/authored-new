@@ -348,6 +348,71 @@ export default function PricingPage() {
           </div>
         </div>
 
+        <section className="faqSection" aria-labelledby="pricing-faq-heading">
+          <div className="faqCard">
+            <div className="pill">FAQ</div>
+            <h2 id="pricing-faq-heading">Questions people ask before upgrading</h2>
+
+            <div className="faqList">
+              <details className="faqItem">
+                <summary>What does Authored actually do?</summary>
+                <p>
+                  Authored helps you turn scattered ideas, notes, voice, and rough thoughts into a clearer writing
+                  starting point you can keep building.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>Can I try Authored before I pay?</summary>
+                <p>
+                  Yes. The free plan lets you test the workflow, generate an outline, and see how Authored helps shape
+                  your manuscript idea before upgrading.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>What is the difference between Project and Lifetime?</summary>
+                <p>
+                  Project is best if you are focused on one serious manuscript. Lifetime is better if you want to work
+                  on multiple books or keep using Authored long term without project restart friction.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>Will Authored help me keep my own voice?</summary>
+                <p>
+                  That is the goal. Authored includes voice and tone controls so your writing direction feels more like
+                  you and less generic.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>Do I need an account before I can pay?</summary>
+                <p>
+                  Yes. You need to be logged in to purchase Project or Lifetime so the plan can be attached to your
+                  account properly.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>Can I export my work?</summary>
+                <p>
+                  Yes. The Project plan and above include DOCX export so you can move your draft into your normal
+                  writing workflow.
+                </p>
+              </details>
+
+              <details className="faqItem">
+                <summary>Still have a question?</summary>
+                <p>
+                  Use the chat bubble on the site and send us your question. If we are away, leave your email and we
+                  will reply.
+                </p>
+              </details>
+            </div>
+          </div>
+        </section>
+
         <div className="row bottomRow" style={{ marginTop: 18 }}>
           <Link className="btn secondary" href="/start">
             Back to writing
@@ -616,6 +681,56 @@ export default function PricingPage() {
           backdrop-filter: blur(10px);
         }
 
+        .faqSection {
+          margin-top: 22px;
+        }
+
+        .faqCard {
+          border-radius: 18px;
+          padding: 18px;
+          background: linear-gradient(180deg, rgba(15, 18, 24, 0.55), rgba(15, 18, 24, 0.38));
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
+          backdrop-filter: blur(14px);
+        }
+
+        .faqCard h2 {
+          margin: 0 0 12px;
+          font-size: 24px;
+          letter-spacing: -0.02em;
+        }
+
+        .faqList {
+          display: grid;
+          gap: 10px;
+        }
+
+        .faqItem {
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.04);
+          padding: 12px 14px;
+        }
+
+        .faqItem summary {
+          cursor: pointer;
+          font-weight: 800;
+          color: rgba(255, 255, 255, 0.95);
+          list-style: none;
+          outline: none;
+        }
+
+        .faqItem summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .faqItem p {
+          margin: 10px 0 0;
+          color: rgba(255, 255, 255, 0.8);
+          line-height: 1.6;
+          font-size: 14px;
+        }
+
         @media (max-width: 960px) {
           .grid {
             grid-template-columns: 1fr;
@@ -651,6 +766,14 @@ export default function PricingPage() {
 
           .card {
             padding: 14px;
+          }
+
+          .faqCard {
+            padding: 14px;
+          }
+
+          .faqCard h2 {
+            font-size: 22px;
           }
 
           .btn {
