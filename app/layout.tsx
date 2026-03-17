@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata = {
@@ -23,15 +24,12 @@ export default function RootLayout({
       <body
         className="antialiased"
         style={{
-          // ✅ Keep the same CSS variable names your app already uses
-          // but set them to system stacks so there is ZERO build-time font fetching.
           ["--font-geist-sans" as any]:
             `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"`,
           ["--font-geist-mono" as any]:
             `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`,
         }}
       >
-        {/* ✅ Surgical injection for legacy public/account.js */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -44,6 +42,20 @@ export default function RootLayout({
         />
 
         {children}
+
+        <Script id="tawk-to" strategy="afterInteractive">
+          {`
+            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+            (function(){
+              var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+              s1.async=true;
+              s1.src='https://embed.tawk.to/69b94b0699e00a1c352dccc2/1jjtsq4qm';
+              s1.charset='UTF-8';
+              s1.setAttribute('crossorigin','*');
+              s0.parentNode.insertBefore(s1,s0);
+            })();
+          `}
+        </Script>
       </body>
     </html>
   );
