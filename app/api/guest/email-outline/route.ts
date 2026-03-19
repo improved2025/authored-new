@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     ].join("\n");
 
     // IMPORTANT: use a verified sender domain in Resend
-    const from = process.env.RESEND_FROM || "Authored <onboarding@resend.dev>";
+    const from = process.env.FROM_EMAIL || "Authored <noreply@myauthored.com>";
 
     const sent = await resend.emails.send({
       from,

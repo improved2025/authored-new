@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const SUPABASE_URL = process.env.SUPABASE_URL || "";
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-    const RESEND_FROM = process.env.FROM_EMAIL || "Authored <onboarding@resend.dev>";
+    const RESEND_FROM = process.env.FROM_EMAIL || "Authored <noreply@myauthored.com>";
 
     if (!SUPABASE_URL) {
       return NextResponse.json({ error: "Missing SUPABASE_URL" }, { status: 500 });
